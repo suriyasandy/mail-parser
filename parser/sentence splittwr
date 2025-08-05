@@ -1,19 +1,12 @@
-import re
-import nltk
+import os
+import pickle
 
-# If not already downloaded
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+# Absolute path for english.pickle within project
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+tokenizer_path = os.path.join(BASE_DIR, 'nltk_data', 'tokenizers', 'punkt', 'english.pickle')
 
-def clean_body_text(text):
-    # Basic cleaning
-    text = re.sub(r'\s+', ' ', text)  # Remove excessive spaces/newlines
-    text = re.sub(r'(?i)(thanks|regards|cheers|best,).+', '', text)  # Remove sign-offs
-    text = re.sub(r'(?i)disclaimer:.*', '', text)  # Remove disclaimers
-    return text.strip()
+with open(tokenizer_path, 'rb') as f:
+    tokenizer = pickle.load(f)
 
-def split_into_sentences(text):
-    from nltk.tokenize import sent_tokenize
-    return sent_tokenize(text)
+def split_into_sentences(text: str):
+    return tokenizer.tokenize(text)
