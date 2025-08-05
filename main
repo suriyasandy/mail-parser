@@ -1,14 +1,10 @@
-from parser.email_loader import load_msg_email
-from parser.sentence_splitter import clean_body_text, split_into_sentences
+from app.parser import extract_email_body
+from app.sentence_splitter import split_into_sentences
 
-if __name__ == "__main__":
-    email_path = "data/sample_email.msg"
-    parsed = load_msg_email(email_path)
+msg_file = 'emails/sample_email.msg'
+email_text = extract_email_body(msg_file)
 
-    print("\n--- Cleaned Body Text ---")
-    clean_text = clean_body_text(parsed['body'])
-    print(clean_text)
+sentences = split_into_sentences(email_text)
 
-    print("\n--- Sentences ---")
-    for i, sent in enumerate(split_into_sentences(clean_text), 1):
-        print(f"{i:02d}. {sent}")
+for i, sent in enumerate(sentences, 1):
+    print(f"{i}. {sent}")
