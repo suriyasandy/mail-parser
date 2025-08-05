@@ -1,0 +1,18 @@
+from parser.email_loader import load_email, split_mail_chain
+
+if __name__ == "__main__":
+    email_path = "data/sample_email.eml"  # or .txt
+    parsed = load_email(email_path)
+
+    print("\n--- Email Metadata ---")
+    print("Subject:", parsed['subject'])
+    print("From:", parsed['from'])
+    print("Date:", parsed['date'])
+
+    print("\n--- Email Body ---")
+    print(parsed['body'])
+
+    print("\n--- Split Email Chain ---")
+    for idx, part in enumerate(split_mail_chain(parsed['body'])):
+        print(f"\n--- Email Part {idx+1} ---")
+        print(part.strip())
