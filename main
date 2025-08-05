@@ -1,10 +1,17 @@
 from app.parser import extract_email_body
 from app.sentence_splitter import split_into_sentences
+from app.summarizer import summarize_sentences
 
 msg_file = 'emails/sample_email.msg'
-email_text = extract_email_body(msg_file)
+body = extract_email_body(msg_file)
+sentences = split_into_sentences(body)
 
-sentences = split_into_sentences(email_text)
+summary = summarize_sentences(sentences)
 
-for i, sent in enumerate(sentences, 1):
-    print(f"{i}. {sent}")
+# Print in readable format
+for tid, attrs in summary.items():
+    print(f"\n--- Trade ID: {tid} ---")
+    for attr, details in attrs.items():
+        print(f"{attr.title()}:")
+        print(f"  All Values: {details['all_values']}")
+        print(f"  Latest    : {details['latest']}")
