@@ -1,0 +1,19 @@
+import re
+import nltk
+
+# If not already downloaded
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+
+def clean_body_text(text):
+    # Basic cleaning
+    text = re.sub(r'\s+', ' ', text)  # Remove excessive spaces/newlines
+    text = re.sub(r'(?i)(thanks|regards|cheers|best,).+', '', text)  # Remove sign-offs
+    text = re.sub(r'(?i)disclaimer:.*', '', text)  # Remove disclaimers
+    return text.strip()
+
+def split_into_sentences(text):
+    from nltk.tokenize import sent_tokenize
+    return sent_tokenize(text)
