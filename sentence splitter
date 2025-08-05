@@ -1,0 +1,12 @@
+import os
+import pickle
+
+# Absolute path for english.pickle within project
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+tokenizer_path = os.path.join(BASE_DIR, 'nltk_data', 'tokenizers', 'punkt', 'english.pickle')
+
+with open(tokenizer_path, 'rb') as f:
+    tokenizer = pickle.load(f)
+
+def split_into_sentences(text: str):
+    return tokenizer.tokenize(text)
