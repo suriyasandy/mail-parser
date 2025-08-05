@@ -1,8 +1,8 @@
-from parser.email_loader import load_email, split_mail_chain
+from parser.email_loader import load_msg_email, split_mail_chain
 
 if __name__ == "__main__":
-    email_path = "data/sample_email.eml"  # or .txt
-    parsed = load_email(email_path)
+    email_path = "data/sample_email.msg"
+    parsed = load_msg_email(email_path)
 
     print("\n--- Email Metadata ---")
     print("Subject:", parsed['subject'])
