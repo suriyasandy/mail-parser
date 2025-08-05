@@ -1,18 +1,14 @@
-from parser.email_loader import load_msg_email, split_mail_chain
+from parser.email_loader import load_msg_email
+from parser.sentence_splitter import clean_body_text, split_into_sentences
 
 if __name__ == "__main__":
     email_path = "data/sample_email.msg"
     parsed = load_msg_email(email_path)
 
-    print("\n--- Email Metadata ---")
-    print("Subject:", parsed['subject'])
-    print("From:", parsed['from'])
-    print("Date:", parsed['date'])
+    print("\n--- Cleaned Body Text ---")
+    clean_text = clean_body_text(parsed['body'])
+    print(clean_text)
 
-    print("\n--- Email Body ---")
-    print(parsed['body'])
-
-    print("\n--- Split Email Chain ---")
-    for idx, part in enumerate(split_mail_chain(parsed['body'])):
-        print(f"\n--- Email Part {idx+1} ---")
-        print(part.strip())
+    print("\n--- Sentences ---")
+    for i, sent in enumerate(split_into_sentences(clean_text), 1):
+        print(f"{i:02d}. {sent}")
