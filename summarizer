@@ -1,0 +1,43 @@
+import re
+from collections import defaultdict
+
+# Regex patterns
+PATTERNS = {
+    'trade_id': re.compile(r'\b(?:Trade\s*ID[:\s]*|TID[:\s]*|#)?([A-Z0-9]{6,})\b', re.IGNORECASE),
+    'price': re.compile(r'\b(?:price|rate|bps|spread)[:\s]*([0-9.]+(?:bps)?)', re.IGNORECASE),
+    'currency': re.compile(r'\b(?:USD|EUR|INR|GBP|JPY|AUD|CAD|CHF|CNY|SGD)\b'),
+    'amount': re.compile(r'\b(?:[\$€₹]?\s?[0-9.]+[MK]?)\b', re.IGNORECASE)
+}
+
+def extract_entities(sentence):
+    entities = {}
+    for attr, pattern in PATTERNS.items():
+        matches = pattern.findall(sentence)
+        if matches:
+            entities[attr] = matches
+    return entities
+
+def summarize_sentences(sentences):
+    trade_summaries = defaultdict(lambda: defaultdict(list))
+
+    for sentence in sentences:
+        entities = extract_entities(sentence)
+        trade_ids = entities.get('trade_id', ['UNKNOWN'])
+
+        for tid in trade_ids:
+            for attr in ['price', 'currency', 'amount']:
+                values = entities.get(attr, [])
+                for val in values:
+                    if val not in trade_summaries[tid][attr]:
+                        trade_summaries[tid][attr].append(val)
+
+    # Now structure output: include latest value for each attribute
+    final_summary = {}
+    for tid, attrs in trade_summaries.items():
+        final_summary[tid] = {}
+        for attr, values in attrs.items():
+            final_summary[tid][attr] = {
+                'all_values': values,
+                'latest': values[-1]  # Last seen value
+            }
+    return final_summary
