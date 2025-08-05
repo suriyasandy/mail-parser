@@ -1,0 +1,6 @@
+import extract_msg
+
+def extract_email_body(msg_path: str) -> str:
+    msg = extract_msg.Message(msg_path)
+    msg.extract()  # ensures all parts are extracted
+    return msg.body
