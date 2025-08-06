@@ -1,0 +1,25 @@
+import spacy
+from typing import List, Dict
+
+# Load your model (change to your actual model if different)
+nlp = spacy.load("en_core_web_sm")
+
+
+def extract_with_spacy(text: str, attribute_names: List[str]) -> Dict[str, List[str]]:
+    """
+    Uses spaCy to extract financial values and link them to known attributes.
+    Example: '14.57 % RoRWA' → {'RoRWA': ['14.57 %']}
+    """
+    doc = nlp(text)
+    extracted = {attr: [] for attr in attribute_names}
+
+    for ent in doc.ents:
+        if ent.label_ in ["MONEY", "PERCENT", "CARDINAL"]:
+            # Look around the entity for matching attribute
+            window_text = doc[max(ent.start - 3, 0):min(ent.end + 3, len(doc))].text
+
+            for attr in attribute_names:
+                if attr.lower() in window_text.lower():
+                    extracted[attr].append(ent.text)
+
+    return extracted
