@@ -6,40 +6,28 @@ def merge_entity_data(
     sentence_data: Dict[str, List[str]],
     table_data: Dict[str, Dict[str, List[str]]],
     spacy_data: Dict[str, List[str]],
-    ocr_table_data: List[Dict[str, str]],  # NEW
+    ocr_table_data: List[Dict[str, str]],
     default_entity: str = "GLOBAL"
 ) -> Dict[str, Dict[str, List[str]]]:
-    """
-    Merges all sources into a unified structure:
-    {
-        "TradeID1": {
-            "RoRWA": [...],
-            "VA": [...]
-        },
-        "GLOBAL": {
-            ...
-        }
-    }
-    """
     result = defaultdict(lambda: defaultdict(list))
 
-    # 1. Table-based (Trade-specific)
     for entity, attrs in table_data.items():
         for attr, values in attrs.items():
             result[entity][attr].extend(values)
 
-    # 2. Sentence-based and SpaCy: Put under GLOBAL
     for source_data in [sentence_data, spacy_data]:
         for attr, values in source_data.items():
             result[default_entity][attr].extend(values)
 
-    # 3. OCR table-based (also under GLOBAL for now)
     for row in ocr_table_data:
+        if "Trade Id" in row:
+            entity = row["Trade Id"]
+        else:
+            entity = default_entity
         for attr, value in row.items():
-            if value and value not in result[default_entity][attr]:
-                result[default_entity][attr].append(value)
+            if value and value not in result[entity][attr]:
+                result[entity][attr].append(value)
 
-    # 4. Deduplicate values
     for entity in result:
         for attr in result[entity]:
             result[entity][attr] = list(set(result[entity][attr]))
