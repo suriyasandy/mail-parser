@@ -8,21 +8,20 @@ if __name__ == "__main__":
     parsed = parse_msg_file(file_path)
     raw_text = parsed['html'] if parsed['html'] else parsed['body']
 
-    # 1. Sentence-based extraction
     sentences = clean_and_split_sentences(raw_text)
-    user_fields = ["Trade ID", "PnL", "CVA", "RoRWA"]
-    sentence_based = extract_attributes(sentences, user_fields)
-
-    # 2. Table/block-based extraction
     lines = raw_text.splitlines()
-    table_based = extract_table_like_data(lines, user_fields)
 
-    print("\n--- FROM SENTENCES ---\n")
-    for k, v in sentence_based.items():
+    user_defined_fields = ["RoRWA", "PnL", "VA", "CVA", "RCVA", "FVA", "Trade Ref"]
+
+    text_values = extract_attributes(sentences, user_defined_fields)
+    table_values = extract_table_like_data(lines, user_defined_fields)
+
+    print("\n--- TEXT-BASED EXTRACTION ---\n")
+    for k, v in text_values.items():
         print(f"{k}: {v}")
 
-    print("\n--- FROM TABLE-LIKE BLOCKS ---\n")
-    for trade, attrs in table_based.items():
-        print(f"Trade: {trade}")
+    print("\n--- TABLE-BASED EXTRACTION ---\n")
+    for entity, attrs in table_values.items():
+        print(f"\nEntity: {entity}")
         for k, v in attrs.items():
             print(f"  {k}: {v}")
