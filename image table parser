@@ -1,0 +1,40 @@
+import extract_msg
+import os
+from typing import List
+import easyocr
+from PIL import Image
+from io import BytesIO
+
+# Local model directory (update to your exact path)
+LOCAL_MODEL_PATH = "./models/easyocr/english_g2"
+MODEL_STORAGE_DIR = "./models/easyocr"  # Base directory for all models
+
+# Initialize reader with forced local loading
+reader = easyocr.Reader(
+    lang_list=['en'],
+    model_storage_directory=MODEL_STORAGE_DIR,
+    user_network_directory=LOCAL_MODEL_PATH,
+    recog_network='english_g2',
+    download_enabled=False  # Important: disables auto-download
+)
+
+def extract_text_from_images_in_msg(file_path: str) -> List[str]:
+    """
+    Extracts text from all images inside a .msg email using EasyOCR with local English G2 model.
+    """
+    msg = extract_msg.Message(file_path)
+    msg.encoding = 'utf-8'
+
+    text_lines = []
+
+    for attachment in msg.attachments:
+        if attachment.longFilename.lower().endswith((".png", ".jpg", ".jpeg")):
+            print(f"Processing image attachment: {attachment.longFilename}")
+
+            image_data = attachment.data
+            image = Image.open(BytesIO(image_data))
+
+            results = reader.readtext(image, detail=0)
+            text_lines.extend(results)
+
+    return text_lines
