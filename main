@@ -1,42 +1,41 @@
-from parsers.msg_parser import parse_msg_file
+from parsers.msg_parser import parse_msg_file_categorized
 from nlp.sentence_splitter import clean_and_split_sentences
 from nlp.attribute_extractor import extract_attributes
 from parsers.table_parser import extract_table_like_data
 from nlp.spacy_extractor import extract_with_spacy
-from parsers.image_table_parser import extract_text_from_images_in_msg
+from parsers.image_table_parser import run_easyocr_and_parse_table
 from tracker.entity_mapper import merge_entity_data
 
+
 def main(file_path: str):
-    # Step 1: Parse .msg email file
-    parsed = parse_msg_file(file_path)
-    raw_text = parsed['html'] if parsed['html'] else parsed['body']
-    lines = raw_text.splitlines()
-    sentences = clean_and_split_sentences(raw_text)
+    user_fields = ["Trade Ref", "RoRWA", "VA", "RCVA", "CVA", "FVA", "PnL", "Trade Id", "BUI Value", "COB Date", "Trade Date"]
+    
+    # Step 1: Categorized parsing of msg file
+    parsed = parse_msg_file_categorized(file_path)
 
-    # Define fields you're interested in
-    user_fields = ["Trade Ref", "RoRWA", "VA", "RCVA", "CVA", "FVA", "PnL"]
-
-    # Step 2: Apply all extractors
+    # Step 2: Textual processing
+    full_text = parsed["text_body"] + "\n" + parsed["html_body"]
+    sentences = clean_and_split_sentences(full_text)
     regex_data = extract_attributes(sentences, user_fields)
-    table_data = extract_table_like_data(lines, user_fields)
-    spacy_data = extract_with_spacy(raw_text, user_fields)
-    ocr_lines = extract_text_from_images_in_msg(file_path)
-    ocr_data = extract_attributes(ocr_lines, user_fields)
+    spacy_data = extract_with_spacy(full_text, user_fields)
+    table_data = extract_table_like_data(full_text.splitlines(), user_fields)
 
-    # Step 3: Merge everything
+    # Step 3: Image OCR + Table parsing
+    ocr_data = []
+    for img_bytes in parsed["image_attachments"]:
+        ocr_rows = run_easyocr_and_parse_table(img_bytes)
+        ocr_data.extend(ocr_rows)
+
+    # Step 4: Merge all extracted info
     merged = merge_entity_data(
         sentence_data=regex_data,
         table_data=table_data,
         spacy_data=spacy_data,
+        ocr_table_data=ocr_data,
         default_entity="GLOBAL"
     )
 
-    # Merge OCR separately into GLOBAL
-    for attr, values in ocr_data.items():
-        merged["GLOBAL"].setdefault(attr, []).extend(values)
-        merged["GLOBAL"][attr] = list(set(merged["GLOBAL"][attr]))
-
-    # Step 4: Print result
+    # Step 5: Print results
     print("\n==== FINAL STRUCTURED OUTPUT ====\n")
     for entity, attrs in merged.items():
         print(f"Entity: {entity}")
@@ -45,5 +44,5 @@ def main(file_path: str):
 
 
 if __name__ == "__main__":
-    file_path = "data/sample_emails/sample1.msg"  # Update as needed
+    file_path = "data/sample1.msg"  # Update to your local file
     main(file_path)
