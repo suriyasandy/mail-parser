@@ -1,14 +1,19 @@
 from parsers.msg_parser import parse_msg_file
 from nlp.sentence_splitter import clean_and_split_sentences
+from nlp.attribute_extractor import extract_attributes
 
 if __name__ == "__main__":
     file_path = "data/sample_emails/sample1.msg"
     parsed = parse_msg_file(file_path)
+    raw_text = parsed['html'] if parsed['html'] else parsed['body']
 
-    # Prefer HTML if available, else plain
-    email_text = parsed['html'] if parsed['html'] else parsed['body']
-    
-    print("\n==== CLEANED SENTENCES ====\n")
-    sentences = clean_and_split_sentences(email_text)
-    for i, s in enumerate(sentences):
-        print(f"{i+1:02d}. {s}")
+    sentences = clean_and_split_sentences(raw_text)
+
+    # 👇 User-defined fields (can be made configurable later)
+    fields = ["Trade ID", "Price", "Quantity", "Settlement Date"]
+
+    extracted = extract_attributes(sentences, fields)
+
+    print("\n--- EXTRACTED ATTRIBUTES ---\n")
+    for attr, values in extracted.items():
+        print(f"{attr}: {values}")
