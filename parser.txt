@@ -1,6 +1,45 @@
+import os
 import extract_msg
+from bs4 import BeautifulSoup
 
-def extract_email_body(msg_path: str) -> str:
-    msg = extract_msg.Message(msg_path)
-    msg.extract()  # ensures all parts are extracted
-    return msg.body
+def parse_msg_file(file_path):
+    """
+    Parses a .msg file and returns a dictionary with extracted content.
+    """
+    msg = extract_msg.Message(file_path)
+    msg.encoding = 'utf-8'
+
+    # Extract header-level fields
+    subject = msg.subject
+    sender = msg.sender
+    to = msg.to
+    cc = msg.cc
+    date = msg.date
+    attachments = msg.attachments
+
+    # Extract message body (plain + HTML fallback)
+    body = msg.body
+    html_body = msg.htmlBody
+    cleaned_html = clean_html(html_body) if html_body else None
+
+    return {
+        "file_name": os.path.basename(file_path),
+        "subject": subject,
+        "sender": sender,
+        "to": to,
+        "cc": cc,
+        "date": date,
+        "body": body,
+        "html": cleaned_html,
+        "attachments": attachments
+    }
+
+def clean_html(html):
+    """
+    Cleans and extracts text from HTML body.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    for script in soup(["script", "style"]):
+        script.decompose()
+    text = soup.get_text(separator="\n")
+    return "\n".join([line.strip() for line in text.splitlines() if line.strip()])
