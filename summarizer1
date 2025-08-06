@@ -1,0 +1,26 @@
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from typing import Optional
+
+# Load small offline-friendly model
+# These will be cached locally after the first download
+model_name = "t5-small"  # Or 'facebook/bart-base' if preferred
+
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+
+summarizer = pipeline("summarization", model=model, tokenizer=tokenizer)
+
+def generate_summary(text: str, max_input_tokens: int = 512, max_summary_tokens: int = 100) -> Optional[str]:
+    """
+    Generates summary for the full email text using t5-small or bart-base.
+    Truncates input if exceeds model limit.
+    """
+    if not text or len(text.strip()) == 0:
+        return None
+
+    # Truncate input (models like t5-small support up to 512 tokens)
+    inputs = tokenizer.encode(text, return_tensors="pt", max_length=max_input_tokens, truncation=True)
+    summary_ids = model.generate(inputs, max_length=max_summary_tokens, min_length=30, length_penalty=2.0, num_beams=4, early_stopping=True)
+
+    output = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    return output
