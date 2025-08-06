@@ -1,30 +1,21 @@
-import nltk
-import os
-import re
-
-# Download the tokenizer only once (you can comment this out after first run)
-nltk.download('punkt')
-
-from nltk.tokenize import sent_tokenize
-
+from utils.email_cleaner import strip_email_headers_and_footers
+# (rest of your imports...)
 
 def clean_and_split_sentences(text: str) -> list:
     """
-    Cleans and splits the input email text into sentences.
-    Handles line breaks, weird spacing, and bullet points.
+    Preprocess and split email text into clean sentences.
     """
     if not text:
         return []
 
-    # Normalize text
+    # Step 1: Remove headers/footers
+    text = strip_email_headers_and_footers(text)
+
+    # Step 2: Normalize newlines/spaces
     text = text.replace('\r\n', '\n').replace('\r', '\n')
-    text = re.sub(r'\n{2,}', '\n', text)  # collapse multiple newlines
-    text = re.sub(r'[ \t]+', ' ', text)   # collapse multiple spaces/tabs
+    text = re.sub(r'\n{2,}', '\n', text)
+    text = re.sub(r'[ \t]+', ' ', text)
 
-    # Use nltk for sentence splitting
+    # Step 3: Sentence tokenize
     raw_sentences = sent_tokenize(text)
-
-    # Further cleaning
-    sentences = [s.strip() for s in raw_sentences if len(s.strip()) > 2]
-
-    return sentences
+    return [s.strip() for s in raw_sentences if len(s.strip()) > 2]
