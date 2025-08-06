@@ -1,19 +1,28 @@
 from parsers.msg_parser import parse_msg_file
 from nlp.sentence_splitter import clean_and_split_sentences
 from nlp.attribute_extractor import extract_attributes
+from parsers.table_parser import extract_table_like_data
 
 if __name__ == "__main__":
     file_path = "data/sample_emails/sample1.msg"
     parsed = parse_msg_file(file_path)
     raw_text = parsed['html'] if parsed['html'] else parsed['body']
 
+    # 1. Sentence-based extraction
     sentences = clean_and_split_sentences(raw_text)
+    user_fields = ["Trade ID", "PnL", "CVA", "RoRWA"]
+    sentence_based = extract_attributes(sentences, user_fields)
 
-    # 👇 User-defined fields (can be made configurable later)
-    fields = ["Trade ID", "Price", "Quantity", "Settlement Date"]
+    # 2. Table/block-based extraction
+    lines = raw_text.splitlines()
+    table_based = extract_table_like_data(lines, user_fields)
 
-    extracted = extract_attributes(sentences, fields)
+    print("\n--- FROM SENTENCES ---\n")
+    for k, v in sentence_based.items():
+        print(f"{k}: {v}")
 
-    print("\n--- EXTRACTED ATTRIBUTES ---\n")
-    for attr, values in extracted.items():
-        print(f"{attr}: {values}")
+    print("\n--- FROM TABLE-LIKE BLOCKS ---\n")
+    for trade, attrs in table_based.items():
+        print(f"Trade: {trade}")
+        for k, v in attrs.items():
+            print(f"  {k}: {v}")
