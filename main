@@ -1,17 +1,30 @@
 from parsers.msg_parser import parse_msg_file
 from nlp.sentence_splitter import clean_and_split_sentences
+from nlp.attribute_extractor import extract_attributes
+from parsers.table_parser import extract_table_like_data
 from nlp.spacy_extractor import extract_with_spacy
+from tracker.entity_mapper import merge_entity_data
 
 if __name__ == "__main__":
     file_path = "data/sample_emails/sample1.msg"
     parsed = parse_msg_file(file_path)
     raw_text = parsed['html'] if parsed['html'] else parsed['body']
 
-    # Attributes we want to extract
-    user_fields = ["RoRWA", "VA", "CVA", "FVA", "RCVA"]
+    # Extraction steps
+    sentences = clean_and_split_sentences(raw_text)
+    lines = raw_text.splitlines()
 
-    spacy_based = extract_with_spacy(raw_text, user_fields)
+    user_fields = ["RoRWA", "VA", "CVA", "RCVA", "FVA", "PnL", "Trade Ref"]
 
-    print("\n--- SPA CY-BASED EXTRACTION ---\n")
-    for attr, vals in spacy_based.items():
-        print(f"{attr}: {vals}")
+    regex_data = extract_attributes(sentences, user_fields)
+    table_data = extract_table_like_data(lines, user_fields)
+    spacy_data = extract_with_spacy(raw_text, user_fields)
+
+    # Merge all
+    merged = merge_entity_data(regex_data, table_data, spacy_data)
+
+    print("\n==== FINAL STRUCTURED OUTPUT ====\n")
+    for entity, attrs in merged.items():
+        print(f"Entity: {entity}")
+        for attr, values in attrs.items():
+            print(f"  {attr}: {values}")
