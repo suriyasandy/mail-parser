@@ -1,0 +1,46 @@
+import re
+from typing import List, Dict
+
+def extract_table_like_data(lines: List[str], attribute_names: List[str]) -> Dict[str, Dict[str, List[str]]]:
+    """
+    Parses vertical or block-style unstructured data and groups by entity (e.g., Trade ID).
+    
+    Returns:
+        {
+            "Trade ID 1": { "PnL": [...], "CVA": [...], ... },
+            "Trade ID 2": { ... }
+        }
+    """
+    entity_map = {}
+    current_entity = None
+
+    for i, line in enumerate(lines):
+        line = line.strip()
+
+        # Try to detect entity anchor (e.g., trade ID-like pattern)
+        trade_id_match = re.match(r'^\d{6,}[A-Z]*$', line)
+        if trade_id_match:
+            current_entity = line
+            if current_entity not in entity_map:
+                entity_map[current_entity] = {}
+            continue
+
+        if not current_entity:
+            continue  # skip lines until we see a valid entity
+
+        # Check if line contains any attribute name
+        for attr in attribute_names:
+            if re.search(re.escape(attr), line, re.IGNORECASE):
+                # Try to extract nearby value (e.g., "PnL 1000.00", "PnL\n1000.00")
+                val_match = re.search(rf"{re.escape(attr)}[^\w\d]?\s*([0-9.,%]+)", line, re.IGNORECASE)
+                if val_match:
+                    value = val_match.group(1)
+                    entity_map[current_entity].setdefault(attr, []).append(value)
+
+                # If value is on the next line
+                elif i+1 < len(lines):
+                    next_line = lines[i+1].strip()
+                    if re.match(r"^[\d,.\-%]+$", next_line):
+                        entity_map[current_entity].setdefault(attr, []).append(next_line)
+
+    return entity_map
