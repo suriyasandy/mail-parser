@@ -1,41 +1,45 @@
 from parsers.msg_parser import parse_msg_file_categorized
+from parsers.html_table_parser import extract_html_tables, tables_to_records
 from nlp.sentence_splitter import clean_and_split_sentences
 from nlp.attribute_extractor import extract_attributes
-from parsers.table_parser import extract_table_like_data
 from nlp.spacy_extractor import extract_with_spacy
+from parsers.table_parser import extract_table_like_data
 from parsers.image_table_parser import run_easyocr_and_parse_table
 from tracker.entity_mapper import merge_entity_data
 
 
 def main(file_path: str):
-    user_fields = ["Trade Ref", "RoRWA", "VA", "RCVA", "CVA", "FVA", "PnL", "Trade Id", "BUI Value", "COB Date", "Trade Date"]
-    
-    # Step 1: Categorized parsing of msg file
+    user_fields = ["Trade Id", "RoRWA", "VA", "RCVA", "CVA", "FVA", "PnL", "BUI Value", "COB Date", "Trade Date"]
+
     parsed = parse_msg_file_categorized(file_path)
 
-    # Step 2: Textual processing
-    full_text = parsed["text_body"] + "\n" + parsed["html_body"]
+    html_tables = extract_html_tables(parsed["html_body"])
+    html_table_records = tables_to_records(html_tables)
+
+    full_text = parsed["text_body"]
+    if isinstance(parsed["html_body"], bytes):
+        full_text += "\n" + parsed["html_body"].decode("utf-8", errors="ignore")
+    else:
+        full_text += "\n" + parsed["html_body"]
+
     sentences = clean_and_split_sentences(full_text)
     regex_data = extract_attributes(sentences, user_fields)
     spacy_data = extract_with_spacy(full_text, user_fields)
     table_data = extract_table_like_data(full_text.splitlines(), user_fields)
 
-    # Step 3: Image OCR + Table parsing
     ocr_data = []
-    for img_bytes in parsed["image_attachments"]:
-        ocr_rows = run_easyocr_and_parse_table(img_bytes)
+    for img_path in parsed["inline_images"] + parsed["attachments"]:
+        ocr_rows = run_easyocr_and_parse_table(img_path)
         ocr_data.extend(ocr_rows)
 
-    # Step 4: Merge all extracted info
     merged = merge_entity_data(
         sentence_data=regex_data,
         table_data=table_data,
         spacy_data=spacy_data,
-        ocr_table_data=ocr_data,
+        ocr_table_data=ocr_data + html_table_records,
         default_entity="GLOBAL"
     )
 
-    # Step 5: Print results
     print("\n==== FINAL STRUCTURED OUTPUT ====\n")
     for entity, attrs in merged.items():
         print(f"Entity: {entity}")
@@ -44,5 +48,4 @@ def main(file_path: str):
 
 
 if __name__ == "__main__":
-    file_path = "data/sample1.msg"  # Update to your local file
-    main(file_path)
+    main("data/sample1.msg")  # Update with your actual .msg file path
