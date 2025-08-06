@@ -1,0 +1,37 @@
+from bs4 import BeautifulSoup
+from typing import List, Dict
+
+
+def extract_html_tables(html: str) -> List[List[List[str]]]:
+    """
+    Parses HTML content and extracts all tables as list of rows,
+    where each row is a list of cell values.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
+
+    extracted_tables = []
+    for table in tables:
+        rows = []
+        for tr in table.find_all("tr"):
+            cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
+            if cells:
+                rows.append(cells)
+        if rows:
+            extracted_tables.append(rows)
+    return extracted_tables
+
+
+def tables_to_records(tables: List[List[List[str]]]) -> List[Dict[str, str]]:
+    """
+    Converts list of table rows to list of dict records using first row as header.
+    """
+    records = []
+    for table in tables:
+        if len(table) < 2:
+            continue  # skip if not enough rows
+        headers = table[0]
+        for row in table[1:]:
+            if len(row) == len(headers):
+                records.append(dict(zip(headers, row)))
+    return records
