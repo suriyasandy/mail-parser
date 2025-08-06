@@ -1,45 +1,29 @@
-import os
 import extract_msg
-from bs4 import BeautifulSoup
+from typing import Dict, List
 
-def parse_msg_file(file_path):
+
+def parse_msg_file_categorized(file_path: str) -> Dict:
     """
-    Parses a .msg file and returns a dictionary with extracted content.
+    Parses a .msg file and categorizes content as:
+    - subject
+    - plain text body
+    - HTML body
+    - image attachments (bytes)
     """
     msg = extract_msg.Message(file_path)
     msg.encoding = 'utf-8'
 
-    # Extract header-level fields
-    subject = msg.subject
-    sender = msg.sender
-    to = msg.to
-    cc = msg.cc
-    date = msg.date
-    attachments = msg.attachments
-
-    # Extract message body (plain + HTML fallback)
-    body = msg.body
-    html_body = msg.htmlBody
-    cleaned_html = clean_html(html_body) if html_body else None
-
-    return {
-        "file_name": os.path.basename(file_path),
-        "subject": subject,
-        "sender": sender,
-        "to": to,
-        "cc": cc,
-        "date": date,
-        "body": body,
-        "html": cleaned_html,
-        "attachments": attachments
+    content = {
+        "subject": msg.subject,
+        "text_body": msg.body or "",
+        "html_body": msg.htmlBody or "",
+        "inline_images": [],         # Inline images if detected (optional future)
+        "image_attachments": []      # Images for OCR
     }
 
-def clean_html(html):
-    """
-    Cleans and extracts text from HTML body.
-    """
-    soup = BeautifulSoup(html, "lxml")
-    for script in soup(["script", "style"]):
-        script.decompose()
-    text = soup.get_text(separator="\n")
-    return "\n".join([line.strip() for line in text.splitlines() if line.strip()])
+    for attachment in msg.attachments:
+        filename = attachment.longFilename.lower()
+        if filename.endswith((".png", ".jpg", ".jpeg")):
+            content["image_attachments"].append(attachment.data)
+
+    return content
