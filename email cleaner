@@ -1,0 +1,28 @@
+import re
+
+def strip_email_headers_and_footers(text: str) -> str:
+    """
+    Strips out:
+    - Quoted email headers (e.g., "From:", "Sent:", etc.)
+    - Common footer/signature blocks
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    cleaned_lines = []
+
+    for line in lines:
+        # Ignore lines that are likely part of quoted emails or metadata
+        if re.match(r'^\s*(From|Sent|To|Cc|Subject|Date):', line, re.IGNORECASE):
+            continue
+        if re.match(r'^\s*>', line):  # quoted replies
+            continue
+        if re.match(r'^-+\s*Original Message\s*-+', line, re.IGNORECASE):
+            break
+        if re.search(r'disclaimer|confidential|do not print|unsubscribe', line, re.IGNORECASE):
+            break
+
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines).strip()
