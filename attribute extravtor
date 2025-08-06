@@ -3,24 +3,33 @@ from typing import List, Dict
 
 def extract_attributes(sentences: List[str], attribute_names: List[str]) -> Dict[str, List[str]]:
     """
-    Extracts values for user-defined attributes using flexible pattern matching.
-
-    Args:
-        sentences: List of preprocessed email sentences
-        attribute_names: List of fields to extract (e.g., 'Trade ID', 'Price')
-
-    Returns:
-        Dict of {attribute_name: list of values}
+    Extracts values for user-defined attributes from free-form sentences.
+    Supports both:
+    - Forward: "Attribute: Value"
+    - Reverse: "Value Attribute"
     """
     extracted = {attr: [] for attr in attribute_names}
 
     for sentence in sentences:
         for attr in attribute_names:
-            # Match patterns like: Trade ID: ABC123, Price = 99.85, Quantity - 1000 units
-            pattern = re.compile(rf"{re.escape(attr)}\s*[:=\-]\s*([^\s,;]+(?: [^\s,;]+)?)", re.IGNORECASE)
-            matches = pattern.findall(sentence)
+            # Forward: Attribute : Value
+            forward_pattern = re.compile(
+                rf"{re.escape(attr)}\s*[:=\-]?\s*([^\s,;]+(?: [^\s,;]+)?)",
+                re.IGNORECASE
+            )
 
-            if matches:
-                extracted[attr].extend(matches)
+            # Reverse: Value followed by Attribute (e.g., "14.57 % RoRWA")
+            reverse_pattern = re.compile(
+                rf"([0-9.,%]+(?: [A-Za-z%]+)?)\s+{re.escape(attr)}",
+                re.IGNORECASE
+            )
+
+            forward_matches = forward_pattern.findall(sentence)
+            reverse_matches = reverse_pattern.findall(sentence)
+
+            if forward_matches:
+                extracted[attr].extend(forward_matches)
+            if reverse_matches:
+                extracted[attr].extend(reverse_matches)
 
     return extracted
