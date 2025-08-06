@@ -1,17 +1,8 @@
-from app.parser import extract_email_body
-from app.sentence_splitter import split_into_sentences
-from app.summarizer import summarize_sentences
+from parsers.msg_parser import parse_msg_file
 
-msg_file = 'emails/sample_email.msg'
-body = extract_email_body(msg_file)
-sentences = split_into_sentences(body)
+if __name__ == "__main__":
+    file_path = "data/sample_emails/sample1.msg"  # Replace with real path
+    parsed = parse_msg_file(file_path)
 
-summary = summarize_sentences(sentences)
-
-# Print in readable format
-for tid, attrs in summary.items():
-    print(f"\n--- Trade ID: {tid} ---")
-    for attr, details in attrs.items():
-        print(f"{attr.title()}:")
-        print(f"  All Values: {details['all_values']}")
-        print(f"  Latest    : {details['latest']}")
+    for k, v in parsed.items():
+        print(f"\n--- {k.upper()} ---\n{v}\n")
