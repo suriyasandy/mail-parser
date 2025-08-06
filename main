@@ -1,27 +1,17 @@
 from parsers.msg_parser import parse_msg_file
 from nlp.sentence_splitter import clean_and_split_sentences
-from nlp.attribute_extractor import extract_attributes
-from parsers.table_parser import extract_table_like_data
+from nlp.spacy_extractor import extract_with_spacy
 
 if __name__ == "__main__":
     file_path = "data/sample_emails/sample1.msg"
     parsed = parse_msg_file(file_path)
     raw_text = parsed['html'] if parsed['html'] else parsed['body']
 
-    sentences = clean_and_split_sentences(raw_text)
-    lines = raw_text.splitlines()
+    # Attributes we want to extract
+    user_fields = ["RoRWA", "VA", "CVA", "FVA", "RCVA"]
 
-    user_defined_fields = ["RoRWA", "PnL", "VA", "CVA", "RCVA", "FVA", "Trade Ref"]
+    spacy_based = extract_with_spacy(raw_text, user_fields)
 
-    text_values = extract_attributes(sentences, user_defined_fields)
-    table_values = extract_table_like_data(lines, user_defined_fields)
-
-    print("\n--- TEXT-BASED EXTRACTION ---\n")
-    for k, v in text_values.items():
-        print(f"{k}: {v}")
-
-    print("\n--- TABLE-BASED EXTRACTION ---\n")
-    for entity, attrs in table_values.items():
-        print(f"\nEntity: {entity}")
-        for k, v in attrs.items():
-            print(f"  {k}: {v}")
+    print("\n--- SPA CY-BASED EXTRACTION ---\n")
+    for attr, vals in spacy_based.items():
+        print(f"{attr}: {vals}")
