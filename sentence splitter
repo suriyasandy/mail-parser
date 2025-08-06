@@ -1,12 +1,30 @@
+import nltk
 import os
-import pickle
+import re
 
-# Absolute path for english.pickle within project
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-tokenizer_path = os.path.join(BASE_DIR, 'nltk_data', 'tokenizers', 'punkt', 'english.pickle')
+# Download the tokenizer only once (you can comment this out after first run)
+nltk.download('punkt')
 
-with open(tokenizer_path, 'rb') as f:
-    tokenizer = pickle.load(f)
+from nltk.tokenize import sent_tokenize
 
-def split_into_sentences(text: str):
-    return tokenizer.tokenize(text)
+
+def clean_and_split_sentences(text: str) -> list:
+    """
+    Cleans and splits the input email text into sentences.
+    Handles line breaks, weird spacing, and bullet points.
+    """
+    if not text:
+        return []
+
+    # Normalize text
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'\n{2,}', '\n', text)  # collapse multiple newlines
+    text = re.sub(r'[ \t]+', ' ', text)   # collapse multiple spaces/tabs
+
+    # Use nltk for sentence splitting
+    raw_sentences = sent_tokenize(text)
+
+    # Further cleaning
+    sentences = [s.strip() for s in raw_sentences if len(s.strip()) > 2]
+
+    return sentences
