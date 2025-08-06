@@ -3,28 +3,47 @@ from nlp.sentence_splitter import clean_and_split_sentences
 from nlp.attribute_extractor import extract_attributes
 from parsers.table_parser import extract_table_like_data
 from nlp.spacy_extractor import extract_with_spacy
+from parsers.image_table_parser import extract_text_from_images_in_msg
 from tracker.entity_mapper import merge_entity_data
 
-if __name__ == "__main__":
-    file_path = "data/sample_emails/sample1.msg"
+def main(file_path: str):
+    # Step 1: Parse .msg email file
     parsed = parse_msg_file(file_path)
     raw_text = parsed['html'] if parsed['html'] else parsed['body']
-
-    # Extraction steps
-    sentences = clean_and_split_sentences(raw_text)
     lines = raw_text.splitlines()
+    sentences = clean_and_split_sentences(raw_text)
 
-    user_fields = ["RoRWA", "VA", "CVA", "RCVA", "FVA", "PnL", "Trade Ref"]
+    # Define fields you're interested in
+    user_fields = ["Trade Ref", "RoRWA", "VA", "RCVA", "CVA", "FVA", "PnL"]
 
+    # Step 2: Apply all extractors
     regex_data = extract_attributes(sentences, user_fields)
     table_data = extract_table_like_data(lines, user_fields)
     spacy_data = extract_with_spacy(raw_text, user_fields)
+    ocr_lines = extract_text_from_images_in_msg(file_path)
+    ocr_data = extract_attributes(ocr_lines, user_fields)
 
-    # Merge all
-    merged = merge_entity_data(regex_data, table_data, spacy_data)
+    # Step 3: Merge everything
+    merged = merge_entity_data(
+        sentence_data=regex_data,
+        table_data=table_data,
+        spacy_data=spacy_data,
+        default_entity="GLOBAL"
+    )
 
+    # Merge OCR separately into GLOBAL
+    for attr, values in ocr_data.items():
+        merged["GLOBAL"].setdefault(attr, []).extend(values)
+        merged["GLOBAL"][attr] = list(set(merged["GLOBAL"][attr]))
+
+    # Step 4: Print result
     print("\n==== FINAL STRUCTURED OUTPUT ====\n")
     for entity, attrs in merged.items():
         print(f"Entity: {entity}")
         for attr, values in attrs.items():
             print(f"  {attr}: {values}")
+
+
+if __name__ == "__main__":
+    file_path = "data/sample_emails/sample1.msg"  # Update as needed
+    main(file_path)
