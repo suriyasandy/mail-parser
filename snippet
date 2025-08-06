@@ -1,0 +1,31 @@
+results = reader.readtext(image_np, detail=1)  # detail=1 gives (bbox, text, confidence)
+
+# Step 1: Sort by vertical position
+results_sorted = sorted(results, key=lambda r: r[0][0][1])  # use top-left Y coord
+
+# Step 2: Group rows (naive line grouping by Y-diff)
+rows = []
+current_row = []
+last_y = None
+threshold = 15  # pixel diff between rows (tune this if needed)
+
+for bbox, text, conf in results_sorted:
+    top_y = bbox[0][1]
+    if last_y is None or abs(top_y - last_y) < threshold:
+        current_row.append(text)
+    else:
+        if current_row:
+            rows.append(current_row)
+        current_row = [text]
+    last_y = top_y
+if current_row:
+    rows.append(current_row)
+
+# Step 3: Convert to list of dicts
+structured_table = []
+headers = rows[0] if rows else []
+for row in rows[1:]:
+    if len(row) != len(headers):
+        continue  # skip malformed row
+    entry = {headers[i]: row[i] for i in range(len(headers))}
+    structured_table.append(entry)
