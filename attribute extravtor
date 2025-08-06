@@ -1,0 +1,26 @@
+import re
+from typing import List, Dict
+
+def extract_attributes(sentences: List[str], attribute_names: List[str]) -> Dict[str, List[str]]:
+    """
+    Extracts values for user-defined attributes using flexible pattern matching.
+
+    Args:
+        sentences: List of preprocessed email sentences
+        attribute_names: List of fields to extract (e.g., 'Trade ID', 'Price')
+
+    Returns:
+        Dict of {attribute_name: list of values}
+    """
+    extracted = {attr: [] for attr in attribute_names}
+
+    for sentence in sentences:
+        for attr in attribute_names:
+            # Match patterns like: Trade ID: ABC123, Price = 99.85, Quantity - 1000 units
+            pattern = re.compile(rf"{re.escape(attr)}\s*[:=\-]\s*([^\s,;]+(?: [^\s,;]+)?)", re.IGNORECASE)
+            matches = pattern.findall(sentence)
+
+            if matches:
+                extracted[attr].extend(matches)
+
+    return extracted
