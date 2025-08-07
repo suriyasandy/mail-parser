@@ -1,0 +1,37 @@
+ATTRIBUTE_PATTERNS = {
+    "TRADE_ID": r"\b[0-9]{4,6}[A-Z]?\b",
+    
+    "CURRENCY": r"\b(?:USD|EUR|GBP|JPY|AUD|CAD|CHF|INR|CNY|HKD|NZD|SGD)\b",
+    
+    "PNL": r"PnL[:\s\-]*[+-]?[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    
+    "CVA": r"CVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    
+    "FVA": r"FVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    
+    "DVA": r"DVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    
+    "VA": r"\bVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    
+    "RCVA": r"RCVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    
+    "RORWA": r"RoRWA[:\s\-]*[0-9.,]+%",
+    
+    "NOTIONAL": r"(?:Notional(?: Value)?\s*[:\-]?\s*)?(?:[\£\$\€])?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s?(?:USD|EUR|GBP)?",
+    
+    "TRADE_DATE": r"Trade Date[:\s\-]*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",
+    
+    "COB_DATE": r"(?:COB|As of)[:\s\-]*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",
+    
+    "BOOK": r"Book(?: Name)?[:\s\-]*[A-Z0-9_/-]+",
+    
+    "COUNTERPARTY": r"Counterparty[:\s\-]*[A-Za-z0-9\s&.,-]+",
+    
+    "PORTFOLIO": r"Portfolio[:\s\-]*[A-Z0-9_\-]+",
+    
+    "ISIN": r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b",
+    
+    "TRADE_TYPE": r"\b(?:Buy|Sell|Long|Short|Option|Swap|Forward|FRA|Repo)\b",
+    
+    "VOLUME": r"Volume[:\s\-]*[0-9.,]+"
+}
