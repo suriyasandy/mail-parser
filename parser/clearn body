@@ -2,41 +2,50 @@ import re
 from bs4 import BeautifulSoup
 
 SIGNATURE_MARKERS = [
-    "regards", "thanks", "thank you", "sincerely", "best regards", "yours truly", "warm regards"
+    "regards", "thanks", "thank you", "sincerely", "best regards", "yours truly"
 ]
 
 HEADER_LINE_REGEX = re.compile(
     r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE
 )
 
+REPLY_SPLITTERS = [
+    "-----Original Message-----",
+    "From:",  # used repeatedly in reply chains
+    "<div class=\"moz-cite-prefix\">"  # Thunderbird
+]
+
 def clean_html_email(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
 
-    # Remove metadata
-    for tag in soup(["style", "script", "head", "title", "meta"]):
-        tag.decompose()
-
-    # Remove blockquotes (older replies)
-    for block in soup.find_all("blockquote"):
-        block.decompose()
-
-    # Extract text
+    # Step 1: Get all text content
     full_text = soup.get_text(separator="\n")
-    cleaned_lines = []
 
+    # Step 2: Keep only the top section before reply chain
+    for marker in REPLY_SPLITTERS:
+        if marker in full_text:
+            full_text = full_text.split(marker)[0]
+            break
+
+    # Step 3: Line-by-line cleaning
+    cleaned_lines = []
     skip_signature = False
+
     for line in full_text.splitlines():
         line_strip = line.strip()
 
-        # Skip header lines
+        if not line_strip:
+            continue
+
+        # Remove header lines
         if HEADER_LINE_REGEX.match(line_strip):
             continue
 
-        # Start skipping signature lines once triggered
-        if not skip_signature and any(marker in line_strip.lower() for marker in SIGNATURE_MARKERS):
+        # Skip rest after signature marker
+        if not skip_signature and any(sig in line_strip.lower() for sig in SIGNATURE_MARKERS):
             skip_signature = True
 
-        if not skip_signature and line_strip:
+        if not skip_signature:
             cleaned_lines.append(line_strip)
 
     cleaned_text = "\n".join(cleaned_lines)
