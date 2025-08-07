@@ -1,0 +1,53 @@
+import re
+import spacy
+
+# 1. Load your custom model once
+nlp = spacy.load("model-best")  # or path to your trained model
+
+
+# 2. Rule-based regex extractor
+def rule_based_extractor(text: str) -> list:
+    patterns = {
+        "TRADE_ID": r"\bTRD\d{4,}\b",
+        "PNL": r"\b[\+\-]?\d+(\.\d+)?[MK]? ?USD\b",
+        "CVA": r"\b\d+(\.\d+)?[MK]? ?USD\b",
+        "COB_DATE": r"\b20\d{2}[-/\.]\d{2}[-/\.]\d{2}\b",
+        "ALERT_DESC": r"(High deviation|Low PnL|Threshold breach)",
+        "NOTIONAL": r"\b\d+[MK]?\s?-\s?\d+[MK]?\b"
+    }
+
+    extracted = []
+    for label, pattern in patterns.items():
+        matches = re.findall(pattern, text)
+        for match in matches:
+            value = match if isinstance(match, str) else match[0]
+            extracted.append((value.strip(), label))
+    
+    return extracted
+
+
+# 3. Utility to detect sentence-like input
+def is_sentence_like(text: str) -> bool:
+    return len(text.split()) > 5 and "." in text or "," in text
+
+
+# 4. Combined NER + Rule-based extractor
+def extract_entities_hybrid(text: str) -> dict:
+    ner_entities = []
+    rule_entities = []
+
+    if is_sentence_like(text):
+        doc = nlp(text)
+        ner_entities = [(ent.text.strip(), ent.label_) for ent in doc.ents]
+    
+    rule_entities = rule_based_extractor(text)
+
+    # Merge: avoid exact duplicates
+    merged = list({(val, label) for val, label in ner_entities + rule_entities})
+    
+    # Return as dictionary grouped by label
+    grouped = {}
+    for val, label in merged:
+        grouped.setdefault(label, []).append(val)
+    
+    return grouped
