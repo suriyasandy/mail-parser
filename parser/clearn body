@@ -1,14 +1,18 @@
-from bs4 import BeautifulSoup
 import re
+from bs4 import BeautifulSoup
 
 SIGNATURE_MARKERS = [
-    "Regards", "Best Regards", "Thanks", "Thank you", "Sincerely", "Yours truly"
+    "regards", "thanks", "thank you", "sincerely", "best regards", "yours truly", "warm regards"
 ]
 
-def clean_html_email(html: str) -> str:
-    soup = BeautifulSoup(html, "html5lib")
+HEADER_LINE_REGEX = re.compile(
+    r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE
+)
 
-    # Remove scripts, styles, meta, headers
+def clean_html_email(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Remove metadata
     for tag in soup(["style", "script", "head", "title", "meta"]):
         tag.decompose()
 
@@ -16,27 +20,26 @@ def clean_html_email(html: str) -> str:
     for block in soup.find_all("blockquote"):
         block.decompose()
 
-    # Optional: Remove horizontal rules or known disclaimers
-    for hr in soup.find_all("hr"):
-        hr.decompose()
-
-    # Flatten out to text for signature stripping
+    # Extract text
     full_text = soup.get_text(separator="\n")
-
-    # Remove email headers (From:, To:, etc.)
     cleaned_lines = []
+
+    skip_signature = False
     for line in full_text.splitlines():
-        if re.match(r"^\s*(From|To|Sent|Subject|Cc):", line, re.IGNORECASE):
+        line_strip = line.strip()
+
+        # Skip header lines
+        if HEADER_LINE_REGEX.match(line_strip):
             continue
-        cleaned_lines.append(line)
+
+        # Start skipping signature lines once triggered
+        if not skip_signature and any(marker in line_strip.lower() for marker in SIGNATURE_MARKERS):
+            skip_signature = True
+
+        if not skip_signature and line_strip:
+            cleaned_lines.append(line_strip)
 
     cleaned_text = "\n".join(cleaned_lines)
-
-    # Stop at first signature marker
-    for sig in SIGNATURE_MARKERS:
-        sig_pos = cleaned_text.lower().find(sig.lower())
-        if sig_pos > 0:
-            cleaned_text = cleaned_text[:sig_pos]
-            break
+    cleaned_text = re.sub(r"\n{2,}", "\n\n", cleaned_text)
 
     return cleaned_text.strip()
