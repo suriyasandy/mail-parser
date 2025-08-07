@@ -1,0 +1,45 @@
+# utils/summarizer.py
+
+import os
+import re
+import nltk
+from collections import Counter
+from nlp.sentence_splitter import split_into_sentences
+
+# 1) Point at your local stopwords
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCAL_NLTK = os.path.join(PROJECT_ROOT, "nltk_data")
+nltk.data.path.insert(0, LOCAL_NLTK)
+
+from nltk.corpus import stopwords
+_stopwords = set(stopwords.words("english"))
+
+def summarize_by_frequency(text: str, top_n: int = 3) -> list[str]:
+    """
+    Extract top_n sentences by simple word‐frequency scoring.
+    """
+    # 2) Split into sentences
+    sentences = split_into_sentences(text)
+    if not sentences:
+        return []
+
+    # 3) Build word frequency over entire text
+    words = [
+        w.lower() for w in re.findall(r"\w+", text)
+        if w.lower() not in _stopwords
+    ]
+    freq = Counter(words)
+
+    # 4) Score each sentence
+    scored = []
+    for sent in sentences:
+        sent_words = [w.lower() for w in re.findall(r"\w+", sent)]
+        score = sum(freq[w] for w in sent_words)
+        scored.append((sent, score))
+
+    # 5) Pick the top_n sentences
+    scored.sort(key=lambda x: x[1], reverse=True)
+    top_sents = {s for s, _ in scored[:top_n]}
+
+    # 6) Return them in original order
+    return [s for s in sentences if s in top_sents]
