@@ -1,0 +1,9 @@
+import re
+
+PATTERNS = {
+    "TRADE_ID": re.compile(r"\b\d{5}[A-Z]\b"),            # e.g. 12344L, 77881A
+    "CVA": re.compile(r"\bCVA[:\s]*[0-9.,]+[KM]?\s?[A-Z]{3}"),  # CVA: 120K USD
+    "PNL": re.compile(r"\bPnL[:\s]*[0-9.,]+[KM]?\s?[A-Z]{3}"),
+    "MONEY": re.compile(r"\b[0-9.,]+[KM]?\s?[A-Z]{3}"),    # e.g. 2.3M EUR
+    "CURRENCY": re.compile(r"\b[A-Z]{3}\b")                # e.g. USD, EUR
+}
