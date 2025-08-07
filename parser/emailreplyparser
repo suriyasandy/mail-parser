@@ -1,17 +1,42 @@
-# extraction/reply_cleaner.py
-
+import re
+from bs4 import BeautifulSoup
 from email_reply_parser import EmailReplyParser
 
-def remove_signatures_keep_quotes(full_text: str) -> str:
-    """
-    Given the full plaintext mail chain, remove *only* the signature fragments
-    but leave the quoted replies intact.
-    """
-    parsed = EmailReplyParser.read(full_text)
-    # `parsed.fragments` is a list of Fragment objects with .content and .type
-    # types: 'content', 'quote', 'signature'
-    cleaned = []
-    for frag in parsed.fragments:
-        if frag.type in ("content", "quote"):
-            cleaned.append(frag.content)
-    return "\n".join(cleaned)
+def html_to_plain_text(html: str) -> str:
+    # crude, but preserves line breaks
+    soup = BeautifulSoup(html, "html.parser")
+    return soup.get_text("\n")
+
+def strip_signatures_and_headers(full_text: str) -> str:
+    # 1) Let email-reply-parser drop formal signatures but keep quotes
+    text_no_sig = EmailReplyParser.parse_reply(full_text)
+
+    # 2) Now run a regex split on any leftover signature markers:
+    #    - Lines starting with common closers
+    #    - Any appearance of _MailAutoSig
+    #    - Standard email headers
+    splitter = re.compile(
+        r"(?m)^(?:--\s*$|"
+        r"Regards,|Thanks,|Thank you,|Sincerely,|Best regards,|Yours truly,|"
+        r"_MailAutoSig|"
+        r"(?:From|To|Cc|Sent|Subject|Date):)", 
+        re.IGNORECASE
+    )
+    # Split at the first match; keep the part before it
+    parts = splitter.split(text_no_sig, maxsplit=1)
+    cleaned = parts[0].rstrip()
+
+    # 3) Finally, drop any empty/whitespace-only lines
+    lines = [ln for ln in cleaned.splitlines() if ln.strip()]
+    return "\n".join(lines)
+
+# ——— Usage ———
+
+# 1) after msg parsing & HTML cleaning:
+raw_html   = parsed["html_body"]
+plain_txt  = html_to_plain_text(raw_html)
+
+# 2) strip signatures & headers:
+final_text = strip_signatures_and_headers(plain_txt)
+
+print(final_text)
