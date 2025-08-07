@@ -1,13 +1,22 @@
 # utils/keyword_extractor.py
 
+import os
+import nltk
+
+# 1. Point NLTK at your local nltk_data (adjust path as needed)
+LOCAL_DATA = os.path.join(os.path.dirname(__file__), "..", "nltk_data")
+nltk.data.path.insert(0, os.path.abspath(LOCAL_DATA))
+
 from rake_nltk import Rake
 
-# configure RAKE to extract phrases of length 1–3 words
+# configure RAKE to extract 1–3 word phrases
 _rake = Rake(min_length=1, max_length=3)
 
 def extract_keywords(text: str, top_n: int = 10) -> list[str]:
     """
-    Returns the top_n ranked keywords/phrases from text using RAKE.
+    Returns the top_n ranked keywords/phrases from text using RAKE,
+    pulling stopwords from your local nltk_data.
     """
+    # this will now find stopwords in LOCAL_DATA/corpora/stopwords/
     _rake.extract_keywords_from_text(text)
     return _rake.get_ranked_phrases()[:top_n]
