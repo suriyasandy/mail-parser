@@ -1,45 +1,18 @@
 from bs4 import BeautifulSoup
-import re
 
-def clean_html_keep_structure(html: str) -> str:
+def preserve_content_html(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
 
-    # --- Remove metadata and styling tags ---
-    for tag in soup(["style", "script", "head", "title", "meta", "link"]):
+    # Remove non-content metadata tags
+    for tag in soup(["style", "script", "head", "meta", "title", "link", "xml"]):
         tag.decompose()
 
-    # --- Remove reply chain: blockquotes, horizontal lines, original messages ---
-    for block in soup.find_all("blockquote"):
-        block.decompose()
+    # DO NOT REMOVE div, p, table, etc.
+    # We’ll extract meaningful content later by analyzing tag structure
 
-    for hr in soup.find_all("hr"):
-        hr.decompose()
-
-    for div in soup.find_all("div"):
-        if "original message" in div.get_text(strip=True).lower():
-            div.decompose()
-
-    # --- Remove repeated headers like From:, To:, etc. ---
-    HEADER_REGEX = re.compile(r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE)
-    for p in soup.find_all(["p", "div", "span", "td"]):
-        text = p.get_text(strip=True)
-        if HEADER_REGEX.match(text):
-            p.decompose()
-
-    # --- Remove signatures heuristically ---
-    SIGNATURE_KEYWORDS = [
-        "regards", "thanks", "thank you", "sincerely", "best regards", "yours truly"
-    ]
-
-    for tag in soup.find_all(["p", "div", "span"]):
-        text = tag.get_text().strip().lower()
-        if any(sig in text for sig in SIGNATURE_KEYWORDS):
-            tag.decompose()
-
-    # Optional: remove empty elements
+    # Remove empty tags
     for tag in soup.find_all():
         if not tag.get_text(strip=True):
             tag.decompose()
 
-    # --- Return cleaned HTML ---
     return str(soup)
