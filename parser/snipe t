@@ -1,0 +1,23 @@
+from spacy.training import Example
+from spacy.tokens import Span
+
+def create_doc_bin(data, nlp):
+    doc_bin = DocBin()
+    for record in data:
+        text = record['text']
+        entities = record['entities']
+        doc = nlp.make_doc(text)
+        spans = []
+        seen_tokens = set()
+
+        for start, end, label in entities:
+            span = doc.char_span(start, end, label=label)
+            if span:
+                # Ensure no token is repeated (no overlap)
+                if not any(token.i in seen_tokens for token in span):
+                    spans.append(span)
+                    seen_tokens.update(token.i for token in span)
+
+        doc.ents = spans
+        doc_bin.add(doc)
+    return doc_bin
