@@ -1,0 +1,14 @@
+import subprocess
+
+def train_spacy_model():
+    cmd = [
+        "python", "-m", "spacy", "train",
+        "config.cfg",
+        "--output", "output",
+        "--paths.train", "data/train.spacy",
+        "--paths.dev", "data/train.spacy"
+    ]
+    subprocess.run(cmd)
+
+if __name__ == "__main__":
+    train_spacy_model()
