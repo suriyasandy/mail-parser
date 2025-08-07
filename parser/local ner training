@@ -1,0 +1,47 @@
+import spacy
+from spacy.tokens import DocBin
+import json
+
+def load_data(jsonl_file):
+    with open(jsonl_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    return [json.loads(line) for line in lines]
+
+def create_doc_bin(data, nlp):
+    doc_bin = DocBin()
+    for record in data:
+        text = record['text']
+        entities = record['entities']
+        doc = nlp.make_doc(text)
+        ents = []
+        for start, end, label in entities:
+            span = doc.char_span(start, end, label=label)
+            if span:
+                ents.append(span)
+        doc.ents = ents
+        doc_bin.add(doc)
+    return doc_bin
+
+if __name__ == "__main__":
+    # Step 1: Initialize blank English pipeline
+    nlp = spacy.blank("en")
+
+    # Step 2: Add NER component if not already
+    if "ner" not in nlp.pipe_names:
+        ner = nlp.add_pipe("ner")
+
+    # Step 3: Read training data
+    train_data = load_data("data/training_data.jsonl")
+
+    # Step 4: Add all labels
+    for record in train_data:
+        for _, _, label in record['entities']:
+            ner.add_label(label)
+
+    # Step 5: Convert to spaCy DocBin
+    doc_bin = create_doc_bin(train_data, nlp)
+    doc_bin.to_disk("data/train.spacy")
+
+    # Step 6: Train using spaCy CLI
+    print("✅ Preprocessing complete. Now run the command below to train:")
+    print("\nspacy train config.cfg --output output/ --paths.train data/train.spacy --paths.dev data/train.spacy\n")
