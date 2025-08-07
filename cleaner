@@ -1,0 +1,68 @@
+import re
+import spacy
+
+# Load spaCy stop-words for later use
+nlp = spacy.blank("en")
+STOP_WORDS = nlp.Defaults.stop_words
+
+# Patterns to identify signature start or common reply delimiters
+SIG_DELIMITERS = [
+    r"--\s*$",                 # standard signature separator
+    r"^__+",                   # underline separators
+    r"^Regards[, ]",           # lines starting with “Regards,”
+    r"^Best[, ]",              # “Best,”
+    r"^Sincerely[, ]",         # “Sincerely,”
+    r"^Thanks[, ]",            # “Thanks,”
+]
+
+# Common boilerplate/disclaimer phrases to strip completely
+BOILERPLATE_PHRASES = [
+    r"internal use only",
+    r"this message.*confidential",
+    r"do not share",
+    r"\[external\]",
+    r"please consider the environment before printing",
+]
+
+def strip_signature(text: str) -> str:
+    """
+    Remove everything from the first appearance of a signature delimiter.
+    """
+    pattern = re.compile(
+        "(" + "|".join(SIG_DELIMITERS) + ")", re.IGNORECASE | re.MULTILINE
+    )
+    match = pattern.search(text)
+    if match:
+        return text[: match.start()].rstrip()
+    return text
+
+def remove_boilerplate(text: str) -> str:
+    """
+    Remove any lines that match common boilerplate/disclaimer phrases.
+    """
+    lines = text.splitlines()
+    cleaned = []
+    for line in lines:
+        if any(re.search(pat, line, re.IGNORECASE) for pat in BOILERPLATE_PHRASES):
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned)
+
+def prune_stopwords(text: str) -> str:
+    """
+    Optionally remove pure stop-word tokens from the text.
+    Useful for table-of-contents or free-text blocks.
+    """
+    doc = nlp(text)
+    tokens = [tok.text for tok in doc if not tok.is_stop]
+    return " ".join(tokens)
+
+def clean_text(text: str) -> str:
+    """
+    Full pipeline: strip signature → remove boilerplate → prune empty lines.
+    """
+    t = strip_signature(text)
+    t = remove_boilerplate(t)
+    # remove any consecutive blank lines
+    t = re.sub(r"\n{2,}", "\n", t).strip()
+    return t
