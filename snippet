@@ -1,13 +1,21 @@
-    # OCR from inline images and attachments
-    ocr_data = []
-    image_sources = parsed.get("inline_images", []) + parsed.get("image_attachments", [])
+# At the top of app.py, add:
+from utils.summarizer import summarize_by_frequency
 
-    for img_path in image_sources:
-        if isinstance(img_path, str) and img_path.lower().endswith((".png", ".jpg", ".jpeg")):
-            try:
-                ocr_rows = run_easyocr_and_parse_table(img_path)
-                ocr_data.extend(ocr_rows)
-            except Exception as e:
-                print(f"[WARNING] OCR failed for {img_path}: {e}")
-        else:
-            print(f"[SKIPPED] Non-image or invalid path: {img_path}")
+# …
+
+if uploaded or demo_text.strip():
+    # … after cleaning …
+    cleaned = clean_text(text_body)
+    st.subheader("Cleaned Email Text")
+    st.code(cleaned)
+
+    # --- New: Frequency‐based Thread Summary ---
+    st.subheader("📄 Thread Summary")
+    summary_sents = summarize_by_frequency(cleaned, top_n=3)
+    if summary_sents:
+        for s in summary_sents:
+            st.write("• " + s)
+    else:
+        st.write("—No summary available—")
+
+    # … rest of your code (keywords, tables, extraction, etc.) …
