@@ -1,0 +1,17 @@
+# extraction/reply_cleaner.py
+
+from email_reply_parser import EmailReplyParser
+
+def remove_signatures_keep_quotes(full_text: str) -> str:
+    """
+    Given the full plaintext mail chain, remove *only* the signature fragments
+    but leave the quoted replies intact.
+    """
+    parsed = EmailReplyParser.read(full_text)
+    # `parsed.fragments` is a list of Fragment objects with .content and .type
+    # types: 'content', 'quote', 'signature'
+    cleaned = []
+    for frag in parsed.fragments:
+        if frag.type in ("content", "quote"):
+            cleaned.append(frag.content)
+    return "\n".join(cleaned)
