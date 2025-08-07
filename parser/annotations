@@ -1,9 +1,80 @@
 import re
+import json
 
-PATTERNS = {
-    "TRADE_ID": re.compile(r"\b\d{5}[A-Z]\b"),            # e.g. 12344L, 77881A
-    "CVA": re.compile(r"\bCVA[:\s]*[0-9.,]+[KM]?\s?[A-Z]{3}"),  # CVA: 120K USD
-    "PNL": re.compile(r"\bPnL[:\s]*[0-9.,]+[KM]?\s?[A-Z]{3}"),
-    "MONEY": re.compile(r"\b[0-9.,]+[KM]?\s?[A-Z]{3}"),    # e.g. 2.3M EUR
-    "CURRENCY": re.compile(r"\b[A-Z]{3}\b")                # e.g. USD, EUR
+# --- Attribute Patterns ---
+ATTRIBUTE_PATTERNS = {
+    "MONEY": r"(?:[\£\$\€])?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s?(?:USD|EUR|GBP)?",
+    "TRADE_ID": r"\b[\d]{4,10}[A-Z]?\b",
+    "ISIN": r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b",
 }
+
+# --- Context Keywords ---
+KEYWORD_CONTEXT = {
+    "PNL": ["pnl", "profit", "loss", "p&l", "profit/loss"],
+    "CVA": ["cva", "credit valuation adjustment"],
+    "FVA": ["fva"],
+    "DVA": ["dva"],
+    "VA": ["va", "valuation adjustment"],
+    "RCVA": ["rcva"],
+    "RORWA": ["rorwa"],
+    "NOTIONAL": ["notional", "notional value"],
+    "VOLUME": ["volume", "quantity"],
+    "PRICE": ["price", "rate", "fx rate", "strike"],
+    "TRADE_DATE": ["trade date", "booking date", "deal date"],
+    "COB_DATE": ["cob", "valuation date", "as of"],
+    "TRADE_ID": ["trade id", "trade reference", "transaction id"],
+    "ISIN": ["isin"],
+}
+
+# --- Load .txt content ---
+def load_text(file_path: str) -> str:
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+# --- Extract with context window ---
+def extract_entities(text: str, window_size: int = 50):
+    entities = []
+    lowered = text.lower()
+    for label, pattern in ATTRIBUTE_PATTERNS.items():
+        for match in re.finditer(pattern, text):
+            start, end = match.start(), match.end()
+            context = lowered[max(0, start - window_size): min(len(text), end + window_size)]
+            assigned_label = None
+
+            # Check contextual keywords
+            for ner_label, keywords in KEYWORD_CONTEXT.items():
+                if any(k in context for k in keywords):
+                    assigned_label = ner_label
+                    break
+
+            # Fallback to raw label if known
+            if not assigned_label and label != "MONEY":
+                assigned_label = label
+
+            if assigned_label:
+                entities.append((start, end, assigned_label))
+
+    return entities
+
+# --- Save in spaCy format ---
+def save_spacy_training_data(text: str, entities, out_file: str):
+    data = [{
+        "text": text,
+        "entities": [(start, end, label) for start, end, label in entities]
+    }]
+    with open(out_file, 'w', encoding='utf-8') as f:
+        for record in data:
+            json.dump(record, f)
+            f.write('\n')
+
+# --- Main ---
+if __name__ == "__main__":
+    file_path = "data/random.txt"              # update if needed
+    output_path = "output/training_data.jsonl" # spaCy format
+
+    raw_text = load_text(file_path)
+    found_entities = extract_entities(raw_text)
+
+    print(f"✅ Found {len(found_entities)} entities.")
+    save_spacy_training_data(raw_text, found_entities, output_path)
+    print(f"📁 Saved training data to: {output_path}")
