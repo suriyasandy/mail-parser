@@ -1,18 +1,44 @@
 from bs4 import BeautifulSoup
+import re
 
-def preserve_content_html(html: str) -> str:
+def clean_outlook_html(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
 
-    # Remove non-content metadata tags
-    for tag in soup(["style", "script", "head", "meta", "title", "link", "xml"]):
+    # --- 1. Remove metadata tags ---
+    for tag in soup(["style", "script", "head", "title", "meta", "link", "xml"]):
         tag.decompose()
 
-    # DO NOT REMOVE div, p, table, etc.
-    # We’ll extract meaningful content later by analyzing tag structure
+    # --- 2. Remove blockquotes (reply chains) ---
+    for block in soup.find_all("blockquote"):
+        block.decompose()
 
-    # Remove empty tags
+    # --- 3. Remove Outlook signature block by class name ---
+    for sig in soup.find_all(attrs={"class": "_MailAutoSig"}):
+        sig.decompose()
+
+    # --- 4. Remove any MS Office formatting tags (class starts with 'Mso') ---
+    for tag in soup.find_all(attrs={"class": re.compile(r"^Mso")}):
+        # Optional: remove just the class or entire tag
+        tag.attrs.pop("class", None)
+        # You can optionally: tag.unwrap() to keep text but remove tag
+        # Or: tag.decompose() to remove tag + content
+
+    # --- 5. Remove MSO-specific inline styles ---
+    for tag in soup.find_all():
+        style = tag.get("style", "")
+        if "mso-" in style:
+            tag.attrs.pop("style", None)
+
+    # --- 6. Remove From:, Sent:, To: etc. inside <p>, <div>, <span> ---
+    HEADER_REGEX = re.compile(r"^\s*(From|To|Cc|Sent|Subject|Date):", re.IGNORECASE)
+    for tag in soup.find_all(["p", "div", "span", "td"]):
+        if HEADER_REGEX.match(tag.get_text(strip=True)):
+            tag.decompose()
+
+    # --- 7. Remove empty tags ---
     for tag in soup.find_all():
         if not tag.get_text(strip=True):
             tag.decompose()
 
+    # ✅ Return cleaned HTML (tables, text, images preserved)
     return str(soup)
