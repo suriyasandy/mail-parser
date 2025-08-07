@@ -1,0 +1,5 @@
+import spacy
+nlp = spacy.load("output/model-best")
+doc = nlp("Trade ID is TRADE1234 and the notional is $2,500,000.00")
+for ent in doc.ents:
+    print(ent.text, "->", ent.label_)
