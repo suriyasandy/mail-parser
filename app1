@@ -12,9 +12,7 @@ from utils.save_feedback import save_feedback
 from ner.retrain import train_model
 
 from utils.keyword_extractor import extract_keywords
-from sumy.parsers.plaintext import PlaintextParser
-from sumy.nlp.tokenizers import Tokenizer
-from sumy.summarizers.lex_rank import LexRankSummarizer
+from nlp.sentence_splitter import split_into_sentences
 
 st.set_page_config(page_title="Trade Entity Extraction", layout="wide")
 
@@ -28,6 +26,19 @@ st.title("Email-based Trade Entity Extraction System")
 # --- Inputs ---
 uploaded = st.file_uploader("Upload .msg file", type=["msg"])
 demo_text = st.text_area("—or paste email text—", height=150)
+
+def summarize_by_keywords(text: str, top_n_sentences: int = 3) -> list[str]:
+    # 1) Extract global keywords
+    kws = extract_keywords(text, top_n=10)
+    # 2) Split into sentences
+    sents = split_into_sentences(text)
+    # 3) Score sentences by keyword hits
+    scored = [(sent, sum(1 for kw in kws if kw.lower() in sent.lower())) for sent in sents]
+    # 4) Pick top N
+    scored.sort(key=lambda x: x[1], reverse=True)
+    top_set = {s for s,_ in scored[:top_n_sentences]}
+    # 5) Return in original order
+    return [s for s in sents if s in top_set]
 
 if uploaded or demo_text.strip():
     # 1) Parse & categorize
@@ -50,24 +61,25 @@ if uploaded or demo_text.strip():
     st.subheader("Cleaned Email Text")
     st.code(cleaned)
 
-    # 3) Thread summary (LexRank)
-    full_text = cleaned  # or join multiple msgs if you have them
-    parser    = PlaintextParser.from_string(full_text, Tokenizer("english"))
-    summarizer= LexRankSummarizer()
-    summary   = summarizer(parser.document, 3)
+    # 3) Thread summary (keyword-driven)
     st.subheader("📄 Thread Summary")
-    st.write(" ".join(str(s) for s in summary))
+    summary_sents = summarize_by_keywords(cleaned, top_n_sentences=3)
+    if summary_sents:
+        for s in summary_sents:
+            st.write("• " + s)
+    else:
+        st.write("—No summary available—")
 
     # 4) Global keywords (RAKE)
-    global_kws = extract_keywords(full_text, top_n=10)
+    global_kws = extract_keywords(cleaned, top_n=10)
     st.subheader("🔑 Predicted Keywords")
     st.write(global_kws)
 
     # Helper to flag important tables
     def is_important(df: pd.DataFrame) -> bool:
-        tbl_text = " ".join(df.columns.astype(str).tolist() +
-                            df.astype(str).values.flatten().tolist()).lower()
-        tbl_kws  = set(extract_keywords(tbl_text, top_n=5))
+        text = " ".join(df.columns.astype(str).tolist() +
+                        df.astype(str).values.flatten().tolist()).lower()
+        tbl_kws = set(extract_keywords(text, top_n=5))
         return bool(tbl_kws.intersection(map(str.lower, global_kws)))
 
     # 5) Important HTML tables
@@ -94,16 +106,28 @@ if uploaded or demo_text.strip():
     all_entities = []
 
     # inline attributes
-    attrs = extract_attributes_from_text(cleaned)
-    for a in attrs:
-        all_entities.append({"attribute":a["attribute"],"value":a["value"],"source":"inline_text"})
+    for a in extract_attributes_from_text(cleaned):
+        all_entities.append({
+            "attribute": a["attribute"],
+            "value":     a["value"],
+            "source":    "inline_text"
+        })
 
     # tables (all HTML + plaintext)
-    for df, src in [(df, f"html_tbl_{i}") for i,df in enumerate(html_tables,1)] + \
-                   [(df, f"plain_tbl_{i}") for i,df in enumerate(plaintext_tables,1)]:
-        for _,row in df.iterrows():
-            for col,val in row.items():
-                all_entities.append({"attribute":col,"value":val,"source":src})
+    for i, df in enumerate(html_tables, 1):
+        for _, row in df.iterrows():
+            for col, val in row.items():
+                all_entities.append({
+                    "attribute": col, "value": val,
+                    "source":    f"html_tbl_{i}"
+                })
+    for i, df in enumerate(plaintext_tables, 1):
+        for _, row in df.iterrows():
+            for col, val in row.items():
+                all_entities.append({
+                    "attribute": col, "value": val,
+                    "source":    f"plain_tbl_{i}"
+                })
 
     # OCR on images
     for res in ocr_results:
@@ -111,54 +135,76 @@ if uploaded or demo_text.strip():
         if "error" in res:
             continue
         ocr_txt = clean_text(res["text"])
-        kws = extract_attributes_from_text(ocr_txt)
-        for a in kws:
-            all_entities.append({"attribute":a["attribute"],"value":a["value"],"source":f"ocr_{fname}"})
+        for a in extract_attributes_from_text(ocr_txt):
+            all_entities.append({
+                "attribute": a["attribute"],
+                "value":     a["value"],
+                "source":    f"ocr_{fname}"
+            })
 
     # attachments (PDF/CSV/Excel)
     for att in attachments:
         name = att.get("filename","")
         data = att.get("data")
         if name.lower().endswith(".pdf"):
-            pages = extract_text_from_pdf(data)
-            for pg in pages:
+            for pg in extract_text_from_pdf(data):
                 txt = clean_text(pg.get("text","") or "")
                 for a in extract_attributes_from_text(txt):
-                    all_entities.append({"attribute":a["attribute"],"value":a["value"],"source":f"pdf_{name}_p{pg['page']}"})
+                    all_entities.append({
+                        "attribute": a["attribute"],
+                        "value":     a["value"],
+                        "source":    f"pdf_{name}_p{pg['page']}"
+                    })
         elif name.lower().endswith(".csv"):
             df = extract_from_csv(data)
-            for _,row in df.iterrows():
-                for col,val in row.items():
-                    all_entities.append({"attribute":col,"value":val,"source":f"csv_{name}"})
-        elif name.lower().endswith((".xls",".xlsx")):
+            for _, row in df.iterrows():
+                for col, val in row.items():
+                    all_entities.append({
+                        "attribute": col,
+                        "value":     val,
+                        "source":    f"csv_{name}"
+                    })
+        elif name.lower().endswith((".xls", ".xlsx")):
             df = extract_from_xlsx(data)
-            for _,row in df.iterrows():
-                for col,val in row.items():
-                    all_entities.append({"attribute":col,"value":val,"source":f"xlsx_{name}"})
+            for _, row in df.iterrows():
+                for col, val in row.items():
+                    all_entities.append({
+                        "attribute": col,
+                        "value":     val,
+                        "source":    f"xlsx_{name}"
+                    })
 
-    # 8) Display & review entire set
+    # 8) Display & review
     if all_entities:
         st.header("🔀 Merged Extraction Results")
         df_ent = pd.DataFrame(all_entities)
-        df_ent["valid"]          = False
+        df_ent["valid"]           = False
         df_ent["edited_attribute"]= df_ent["attribute"]
         df_ent["edited_value"]    = df_ent["value"]
 
-        for i,row in df_ent.iterrows():
-            c1,c2,c3,c4 = st.columns([2,2,1,3])
-            df_ent.at[i,"edited_attribute"]= c1.text_input(f"Atr{i}",row["attribute"],key=f"a_{i}")
-            df_ent.at[i,"edited_value"]    = c2.text_input(f"Val{i}",row["value"],    key=f"v_{i}")
-            df_ent.at[i,"valid"]           = c3.checkbox("Valid",key=f"c_{i}")
+        for i, row in df_ent.iterrows():
+            c1, c2, c3, c4 = st.columns([2,2,1,3])
+            df_ent.at[i,"edited_attribute"] = c1.text_input(
+                f"Attr {i}", row["attribute"], key=f"a_{i}"
+            )
+            df_ent.at[i,"edited_value"]    = c2.text_input(
+                f"Val {i}",   row["value"],     key=f"v_{i}"
+            )
+            df_ent.at[i,"valid"]           = c3.checkbox(
+                "Valid", key=f"c_{i}"
+            )
             c4.write(row["source"])
 
-        # download & feedback
         if role in ["Analyst","Supervisor","Admin"]:
             valid = df_ent[df_ent["valid"]]
             if not valid.empty:
                 csv_bytes = valid[["edited_attribute","edited_value"]].to_csv(index=False).encode()
                 st.download_button("Download CSV", data=csv_bytes, file_name="entities.csv")
             if role in ["Supervisor","Admin"] and st.button("Submit Feedback"):
-                feedback = [{"label":r["edited_attribute"],"text":r["edited_value"]} for _,r in valid.iterrows()]
+                feedback = [
+                    {"label":r["edited_attribute"],"text":r["edited_value"]}
+                    for _,r in valid.iterrows()
+                ]
                 save_feedback(cleaned, feedback)
                 st.success("Feedback saved.")
         if role=="Admin" and st.button("Retrain Model"):
