@@ -1,0 +1,34 @@
+import re
+
+# Common signature endings
+SIGNATURE_MARKERS = [
+    "Regards", "Best Regards", "Thanks", "Thank you", "Sincerely", "Yours truly"
+]
+
+# Header pattern (used in email replies/forwards)
+HEADER_PATTERN = re.compile(
+    r"(From:.*?\n|To:.*?\n|Cc:.*?\n|Sent:.*?\n|Subject:.*?\n)+", re.IGNORECASE
+)
+
+def clean_text(text):
+    lines = text.splitlines()
+    cleaned_lines = []
+    skip = False
+
+    for line in lines:
+        # Skip headers
+        if HEADER_PATTERN.match(line):
+            continue
+
+        # Skip signature (stop once signature starts)
+        if any(sig.lower() in line.lower() for sig in SIGNATURE_MARKERS):
+            skip = True
+
+        if not skip and line.strip():
+            cleaned_lines.append(line.strip())
+
+    cleaned_text = "\n".join(cleaned_lines)
+    # Normalize extra whitespace
+    cleaned_text = re.sub(r'\n{2,}', '\n\n', cleaned_text)
+
+    return cleaned_text
