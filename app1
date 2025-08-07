@@ -3,14 +3,18 @@ import pandas as pd
 
 from extraction.msg_parser_util import parse_msg_file_categorized
 from extraction.cleaner import clean_text
-from extraction.attribute_extractor import (
-    extract_attributes_from_text,
-    detect_language
-)
+from extraction.attribute_extractor import extract_attributes_from_text, detect_language
+from extraction.table_extractor import extract_tables_from_html, extract_plaintext_tables
+from extraction.ocr_extractor import extract_text_from_images
+from extraction.pdf_extractor import extract_text_from_pdf
+from extraction.attachment_extractor import extract_from_csv, extract_from_xlsx
 from utils.save_feedback import save_feedback
 from ner.retrain import train_model
-from extraction.attachment_extractor import extract_from_csv, extract_from_xlsx
-from extraction.pdf_extractor import extract_text_from_pdf
+
+from utils.keyword_extractor import extract_keywords
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lex_rank import LexRankSummarizer
 
 st.set_page_config(page_title="Trade Entity Extraction", layout="wide")
 
@@ -21,170 +25,143 @@ st.sidebar.write(f"Role: {role}")
 
 st.title("Email-based Trade Entity Extraction System")
 
-# --- Input ---
+# --- Inputs ---
 uploaded = st.file_uploader("Upload .msg file", type=["msg"])
 demo_text = st.text_area("—or paste email text—", height=150)
 
 if uploaded or demo_text.strip():
-    # 1️⃣ Parse & categorize .msg (or use demo text)
+    # 1) Parse & categorize
     if uploaded:
         parsed = parse_msg_file_categorized(uploaded)
-
         text_body        = parsed["text_body"]
-        html_body        = parsed["html_body"]
         html_tables      = parsed["html_tables"]
         plaintext_tables = parsed["plaintext_tables"]
         ocr_results      = parsed["ocr_results"]
-        attachments      = parsed.get("attachments", [])  # if you extend parser to return these
+        attachments      = parsed.get("attachments", [])
     else:
         text_body        = demo_text
-        html_body        = ""
         html_tables      = []
         plaintext_tables = []
         ocr_results      = []
         attachments      = []
 
-    # 2️⃣ Clean the main text
+    # 2) Clean text body
     cleaned = clean_text(text_body)
     st.subheader("Cleaned Email Text")
     st.code(cleaned)
 
-    # 3️⃣ Extract inline attributes
-    st.subheader("Inline Attributes")
-    inline_attrs = extract_attributes_from_text(cleaned)
-    st.json(inline_attrs)
+    # 3) Thread summary (LexRank)
+    full_text = cleaned  # or join multiple msgs if you have them
+    parser    = PlaintextParser.from_string(full_text, Tokenizer("english"))
+    summarizer= LexRankSummarizer()
+    summary   = summarizer(parser.document, 3)
+    st.subheader("📄 Thread Summary")
+    st.write(" ".join(str(s) for s in summary))
 
+    # 4) Global keywords (RAKE)
+    global_kws = extract_keywords(full_text, top_n=10)
+    st.subheader("🔑 Predicted Keywords")
+    st.write(global_kws)
+
+    # Helper to flag important tables
+    def is_important(df: pd.DataFrame) -> bool:
+        tbl_text = " ".join(df.columns.astype(str).tolist() +
+                            df.astype(str).values.flatten().tolist()).lower()
+        tbl_kws  = set(extract_keywords(tbl_text, top_n=5))
+        return bool(tbl_kws.intersection(map(str.lower, global_kws)))
+
+    # 5) Important HTML tables
+    imp_html = [df for df in html_tables if is_important(df)]
+    st.subheader("🔍 Important HTML Tables")
+    if imp_html:
+        for i, df in enumerate(imp_html, 1):
+            st.write(f"Table {i}")
+            st.dataframe(df)
+    else:
+        st.info("No important HTML tables detected.")
+
+    # 6) Important plaintext tables
+    imp_pt = [df for df in plaintext_tables if is_important(df)]
+    st.subheader("🔍 Important Plaintext Tables")
+    if imp_pt:
+        for i, df in enumerate(imp_pt, 1):
+            st.write(f"Table {i}")
+            st.dataframe(df)
+    else:
+        st.info("No important plain-text tables detected.")
+
+    # 7) Unified extraction & validation
     all_entities = []
-    for attr in inline_attrs:
-        all_entities.append({
-            "attribute": attr["attribute"],
-            "value":     attr["value"],
-            "source":    "inline_text"
-        })
 
-    # 4️⃣ HTML tables
-    st.subheader("HTML Tables")
-    for i, df in enumerate(html_tables, 1):
-        st.write(f"Table {i}")
-        st.dataframe(df)
-        for _, row in df.iterrows():
-            for col, val in row.items():
-                all_entities.append({
-                    "attribute": col,
-                    "value":     val,
-                    "source":    f"html_table_{i}"
-                })
+    # inline attributes
+    attrs = extract_attributes_from_text(cleaned)
+    for a in attrs:
+        all_entities.append({"attribute":a["attribute"],"value":a["value"],"source":"inline_text"})
 
-    # 5️⃣ Plaintext tables
-    st.subheader("Plaintext Tables")
-    for i, df in enumerate(plaintext_tables, 1):
-        st.write(f"Table {i}")
-        st.dataframe(df)
+    # tables (all HTML + plaintext)
+    for df, src in [(df, f"html_tbl_{i}") for i,df in enumerate(html_tables,1)] + \
+                   [(df, f"plain_tbl_{i}") for i,df in enumerate(plaintext_tables,1)]:
+        for _,row in df.iterrows():
+            for col,val in row.items():
+                all_entities.append({"attribute":col,"value":val,"source":src})
 
-        # allow header remapping if columns are generic
-        if all(c.startswith("col_") for c in df.columns):
-            new_hdr = st.text_input(
-                f"Headers for Table {i}", 
-                value=",".join(df.columns), 
-                key=f"hdr_{i}"
-            )
-            hdrs = [h.strip() for h in new_hdr.split(",")]
-            if len(hdrs) == len(df.columns):
-                df.columns = hdrs
-                st.dataframe(df)
+    # OCR on images
+    for res in ocr_results:
+        fname = res["filename"]
+        if "error" in res:
+            continue
+        ocr_txt = clean_text(res["text"])
+        kws = extract_attributes_from_text(ocr_txt)
+        for a in kws:
+            all_entities.append({"attribute":a["attribute"],"value":a["value"],"source":f"ocr_{fname}"})
 
-        for _, row in df.iterrows():
-            for col, val in row.items():
-                all_entities.append({
-                    "attribute": col,
-                    "value":     val,
-                    "source":    f"plaintext_table_{i}"
-                })
-
-    # 6️⃣ OCR on image attachments
-    st.subheader("OCR from Images")
-    for r in ocr_results:
-        st.write(f"Image: {r['filename']}")
-        if "error" in r:
-            st.error(r["error"])
-        else:
-            ocr_text = clean_text(r["text"])
-            st.code(ocr_text)
-            ocr_attrs = extract_attributes_from_text(ocr_text)
-            for attr in ocr_attrs:
-                all_entities.append({
-                    "attribute": attr["attribute"],
-                    "value":     attr["value"],
-                    "source":    f"ocr_{r['filename']}"
-                })
-
-    # 7️⃣ Other attachments (PDF, CSV, Excel) if your parser returns them
-    st.subheader("Other Attachments")
+    # attachments (PDF/CSV/Excel)
     for att in attachments:
-        name = att.get("filename") or ""
+        name = att.get("filename","")
         data = att.get("data")
         if name.lower().endswith(".pdf"):
-            st.write(f"PDF: {name}")
             pages = extract_text_from_pdf(data)
             for pg in pages:
                 txt = clean_text(pg.get("text","") or "")
-                st.write(f"Page {pg['page']}")
-                st.code(txt)
-                for attr in extract_attributes_from_text(txt):
-                    all_entities.append({
-                        "attribute": attr["attribute"],
-                        "value":     attr["value"],
-                        "source":    f"pdf_{name}_p{pg['page']}"
-                    })
+                for a in extract_attributes_from_text(txt):
+                    all_entities.append({"attribute":a["attribute"],"value":a["value"],"source":f"pdf_{name}_p{pg['page']}"})
         elif name.lower().endswith(".csv"):
-            st.write(f"CSV: {name}")
             df = extract_from_csv(data)
-            st.dataframe(df)
-            for _, row in df.iterrows():
-                for col, val in row.items():
-                    all_entities.append({
-                        "attribute": col,
-                        "value":     val,
-                        "source":    f"csv_{name}"
-                    })
-        elif name.lower().endswith((".xls", ".xlsx")):
-            st.write(f"Excel: {name}")
+            for _,row in df.iterrows():
+                for col,val in row.items():
+                    all_entities.append({"attribute":col,"value":val,"source":f"csv_{name}"})
+        elif name.lower().endswith((".xls",".xlsx")):
             df = extract_from_xlsx(data)
-            st.dataframe(df)
-            for _, row in df.iterrows():
-                for col, val in row.items():
-                    all_entities.append({
-                        "attribute": col,
-                        "value":     val,
-                        "source":    f"xlsx_{name}"
-                    })
+            for _,row in df.iterrows():
+                for col,val in row.items():
+                    all_entities.append({"attribute":col,"value":val,"source":f"xlsx_{name}"})
 
-    # 8️⃣ Consolidate & review
+    # 8) Display & review entire set
     if all_entities:
-        st.header("Consolidated Entities")
+        st.header("🔀 Merged Extraction Results")
         df_ent = pd.DataFrame(all_entities)
-        df_ent["valid"]           = False
-        df_ent["edited_attr"]     = df_ent["attribute"]
+        df_ent["valid"]          = False
+        df_ent["edited_attribute"]= df_ent["attribute"]
         df_ent["edited_value"]    = df_ent["value"]
 
-        for i, row in df_ent.iterrows():
-            c1, c2, c3, c4 = st.columns([2,2,1,3])
-            df_ent.at[i, "edited_attr"]  = c1.text_input(f"Attr {i}", row["attribute"], key=f"ea_{i}")
-            df_ent.at[i, "edited_value"] = c2.text_input(f"Val {i}",  row["value"],     key=f"ev_{i}")
-            df_ent.at[i, "valid"]        = c3.checkbox("Valid", key=f"v_{i}")
+        for i,row in df_ent.iterrows():
+            c1,c2,c3,c4 = st.columns([2,2,1,3])
+            df_ent.at[i,"edited_attribute"]= c1.text_input(f"Atr{i}",row["attribute"],key=f"a_{i}")
+            df_ent.at[i,"edited_value"]    = c2.text_input(f"Val{i}",row["value"],    key=f"v_{i}")
+            df_ent.at[i,"valid"]           = c3.checkbox("Valid",key=f"c_{i}")
             c4.write(row["source"])
 
-        # Actions by role
-        if role in ["Analyst", "Supervisor", "Admin"]:
+        # download & feedback
+        if role in ["Analyst","Supervisor","Admin"]:
             valid = df_ent[df_ent["valid"]]
             if not valid.empty:
-                csv_bytes = valid[["edited_attr","edited_value"]].to_csv(index=False).encode()
+                csv_bytes = valid[["edited_attribute","edited_value"]].to_csv(index=False).encode()
                 st.download_button("Download CSV", data=csv_bytes, file_name="entities.csv")
             if role in ["Supervisor","Admin"] and st.button("Submit Feedback"):
-                feedback = [{"label":r["edited_attr"],"text":r["edited_value"]} for _,r in valid.iterrows()]
+                feedback = [{"label":r["edited_attribute"],"text":r["edited_value"]} for _,r in valid.iterrows()]
                 save_feedback(cleaned, feedback)
                 st.success("Feedback saved.")
-        if role == "Admin" and st.button("Retrain Model"):
+        if role=="Admin" and st.button("Retrain Model"):
             train_model()
             st.success("Model retrained.")
     else:
