@@ -1,36 +1,81 @@
-def run_easyocr_with_custom_ner(image_input, model_path="model-best"):
+def run_easyocr_with_custom_ner(
+    image_input,
+    model_path="model-best",
+    easyocr_model_path="./easyocr_model",
+    y_threshold=5
+):
     import easyocr
     import numpy as np
+    import spacy
     from PIL import Image
     from io import BytesIO
-    import spacy
 
-    # Load OCR and NER
-    reader = easyocr.Reader(['en'])
+    # Load custom NER model
     nlp = spacy.load(model_path)
 
-    # Step 1: OCR Input Handling
+    # Load EasyOCR reader with local model (no internet download)
+    reader = easyocr.Reader(
+        lang_list=['en'],
+        model_storage_directory=easyocr_model_path,
+        user_network_directory=easyocr_model_path,
+        recog_network='english_g2',
+        download_enabled=False
+    )
+
+    # Convert input to image
     if isinstance(image_input, str):
-        ocr_result = reader.readtext(image_input, detail=0)
+        image = Image.open(image_input).convert("RGB")
     elif isinstance(image_input, bytes):
-        img = Image.open(BytesIO(image_input))
-        ocr_result = reader.readtext(np.array(img), detail=0)
+        image = Image.open(BytesIO(image_input)).convert("RGB")
     elif isinstance(image_input, Image.Image):
-        ocr_result = reader.readtext(np.array(image_input), detail=0)
+        image = image_input.convert("RGB")
     elif isinstance(image_input, np.ndarray):
-        ocr_result = reader.readtext(image_input, detail=0)
+        image = Image.fromarray(image_input).convert("RGB")
     else:
-        raise ValueError("Unsupported image input format for EasyOCR.")
+        raise ValueError("Unsupported image input type")
 
-    # Step 2: Join OCR lines to text
-    extracted_text = " ".join(ocr_result)
+    # Step 1: OCR
+    results = reader.readtext(np.array(image), detail=1)
 
-    # Step 3: Apply Custom NER
-    doc = nlp(extracted_text)
+    # Step 2: Group lines by Y-coordinate
+    results_sorted = sorted(results, key=lambda r: r[0][0][1])
+    rows = []
+    current_row = []
+    last_y = None
+
+    for result in results_sorted:
+        bbox, text, _ = result
+        top_y = bbox[0][1]
+
+        if last_y is None or abs(top_y - last_y) > y_threshold:
+            if current_row:
+                rows.append(current_row)
+            current_row = [text]
+            last_y = top_y
+        else:
+            current_row.append(text)
+
+    if current_row:
+        rows.append(current_row)
+
+    # Step 3: Convert rows to structured data
+    structured_table = []
+    if len(rows) >= 2:
+        headers = rows[0]
+        for row in rows[1:]:
+            entry = {}
+            for i in range(min(len(headers), len(row))):
+                entry[headers[i]] = row[i]
+            structured_table.append(entry)
+
+    # Step 4: Apply NER on full OCR text
+    full_text = " ".join([r[1] for r in results_sorted])
+    doc = nlp(full_text)
     entities = [(ent.text, ent.label_) for ent in doc.ents]
 
-    # Step 4: Return both text and extracted entities
+    # Return structured and unstructured results
     return {
-        "text": extracted_text,
-        "entities": entities
+        "text": full_text,
+        "entities": entities,
+        "structured_table": structured_table
     }
