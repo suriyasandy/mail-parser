@@ -1,0 +1,45 @@
+import pandas as pd
+from typing import List, Tuple
+
+# Define your entity labels and corresponding columns
+ENTITY_FIELDS = {
+    "trade_id": "TRADE_ID",
+    "pnl_amount": "PNL",
+    "commission_amount": "COMMISSION",
+    "deviation_percent": "DEVIATION",
+    "alert_description": "ALERT_DESC",
+    "legal_entity": "LEGAL_ENTITY",
+    "trade_date": "TRADE_DATE",
+    "settlement_date": "SETTLEMENT_DATE",
+    "notional_range": "NOTIONAL",
+    "base_threshold_percent": "BASE_THRESHOLD",
+    "orig_threshold_percent": "ORIG_THRESHOLD",
+}
+
+def generate_training_data(csv_path: str) -> List[Tuple[str, dict]]:
+    df = pd.read_csv(csv_path)
+    training_data = []
+
+    for _, row in df.iterrows():
+        # Construct the synthetic sentence
+        sentence = (
+            f"Trade {row['trade_id']} was executed for legal entity {row['legal_entity']} "
+            f"on {row['trade_date']} and settled on {row['settlement_date']}. "
+            f"The PnL was {row['pnl_amount']} with a commission of {row['commission_amount']}. "
+            f"Deviation percent was {row['deviation_percent']}. "
+            f"Alert description: {row['alert_description']}. "
+            f"Notional range was {row['notional_range']} with base threshold {row['base_threshold_percent']} "
+            f"and original threshold {row['orig_threshold_percent']}."
+        )
+
+        entities = []
+        for col, label in ENTITY_FIELDS.items():
+            value = str(row[col])
+            start = sentence.find(value)
+            if start != -1:
+                end = start + len(value)
+                entities.append((start, end, label))
+
+        training_data.append((sentence, {"entities": entities}))
+    
+    return training_data
