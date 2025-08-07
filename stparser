@@ -1,38 +1,85 @@
-# extraction/msg_parser_util.py
+import extract_msg
+import re
+import io
+from bs4 import BeautifulSoup
+import pandas as pd
+from PIL import Image
+import easyocr
+from parsers.table_extractor import extract_plaintext_tables  # your existing function
 
-from msg_parser import MsOxMessage
+# instantiate the OCR reader once
+reader = easyocr.Reader(['en'], gpu=False)
 
-def parse_msg_file(msg_file):
+def parse_msg_file_categorized(file_path: str) -> dict:
     """
-    Parse a .msg file and return:
-      - chain: list of {text_body, html_body} in thread order
-      - attachments: list of attachments
+    Parses a .msg file and returns:
+      - subject
+      - text_body
+      - html_body
+      - inline_images (list of {filename, data})
+      - image_attachments (list of {filename, data})
+      - ocr_results (list of {filename, text or error})
+      - html_tables (list of DataFrames)
+      - plaintext_tables (list of DataFrames)
     """
-    msg = MsOxMessage(msg_file)
+    msg = extract_msg.Message(file_path)
+    msg.encoding = 'utf-8'
 
-    # 1. Extract raw bodies
-    body = getattr(msg, "body", "") or getattr(msg, "plain_body", "") or ""
-    html  = getattr(msg, "htmlBody", "") or getattr(msg, "html_body", "") or getattr(msg, "html", "") or ""
+    subject   = msg.subject or ""
+    text_body = msg.body    or ""
+    html_body = msg.htmlBody or msg.html_body or ""
 
-    # 2. Split into a simple “thread” by common delimiters
-    text_parts = body.split("\nFrom:")
-    html_parts = html.split("<br>From:") if html else [""] * len(text_parts)
+    # separate inline vs attachment images
+    inline_images    = []
+    image_attachments = []
+    for att in msg.attachments or []:
+        name = att.longFilename or att.shortFilename or ""
+        data = att.data
+        ext  = name.lower().split('.')[-1]
+        if ext in ("png","jpg","jpeg","bmp","tiff"):
+            # treat as inline if referenced by CID in html
+            cid_ref = f"cid:{name}"
+            if hasattr(att, "content_id") or cid_ref in html_body:
+                inline_images.append({"filename": name, "data": data})
+            else:
+                image_attachments.append({"filename": name, "data": data})
 
-    chain = []
-    for i, txt in enumerate(text_parts):
-        chain.append({
-            "text_body": txt.strip(),
-            "html_body": (html_parts[i] if i < len(html_parts) else "").strip()
-        })
+    # run OCR on all attachment images
+    ocr_results = []
+    for img in image_attachments:
+        try:
+            # you can also do Image.open(io.BytesIO(img["data"])) if needed
+            texts = reader.readtext(img["data"], detail=0)
+            ocr_results.append({
+                "filename": img["filename"],
+                "text": "\n".join(texts)
+            })
+        except Exception as e:
+            ocr_results.append({
+                "filename": img["filename"],
+                "error": str(e)
+            })
 
-    # 3. Decode bytes if needed (safety)
-    for msg_obj in chain:
-        for k in ("text_body", "html_body"):
-            v = msg_obj[k]
-            if isinstance(v, (bytes, bytearray)):
-                msg_obj[k] = v.decode("utf-8", errors="ignore")
+    # extract HTML tables
+    soup = BeautifulSoup(html_body, "html.parser")
+    html_tables = []
+    for table in soup.find_all("table"):
+        try:
+            df = pd.read_html(str(table))[0]
+            html_tables.append(df)
+        except Exception:
+            continue
+
+    # extract plaintext tables
+    plaintext_tables = extract_plaintext_tables(text_body)
 
     return {
-        "chain": chain,
-        "attachments": msg.attachments or []
+        "subject": subject,
+        "text_body": text_body,
+        "html_body": html_body,
+        "inline_images": inline_images,
+        "image_attachments": image_attachments,
+        "ocr_results": ocr_results,
+        "html_tables": html_tables,
+        "plaintext_tables": plaintext_tables,
     }
