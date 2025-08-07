@@ -1,34 +1,42 @@
+from bs4 import BeautifulSoup
 import re
 
-# Common signature endings
 SIGNATURE_MARKERS = [
     "Regards", "Best Regards", "Thanks", "Thank you", "Sincerely", "Yours truly"
 ]
 
-# Header pattern (used in email replies/forwards)
-HEADER_PATTERN = re.compile(
-    r"(From:.*?\n|To:.*?\n|Cc:.*?\n|Sent:.*?\n|Subject:.*?\n)+", re.IGNORECASE
-)
+def clean_html_email(html: str) -> str:
+    soup = BeautifulSoup(html, "html5lib")
 
-def clean_text(text):
-    lines = text.splitlines()
+    # Remove scripts, styles, meta, headers
+    for tag in soup(["style", "script", "head", "title", "meta"]):
+        tag.decompose()
+
+    # Remove blockquotes (older replies)
+    for block in soup.find_all("blockquote"):
+        block.decompose()
+
+    # Optional: Remove horizontal rules or known disclaimers
+    for hr in soup.find_all("hr"):
+        hr.decompose()
+
+    # Flatten out to text for signature stripping
+    full_text = soup.get_text(separator="\n")
+
+    # Remove email headers (From:, To:, etc.)
     cleaned_lines = []
-    skip = False
-
-    for line in lines:
-        # Skip headers
-        if HEADER_PATTERN.match(line):
+    for line in full_text.splitlines():
+        if re.match(r"^\s*(From|To|Sent|Subject|Cc):", line, re.IGNORECASE):
             continue
-
-        # Skip signature (stop once signature starts)
-        if any(sig.lower() in line.lower() for sig in SIGNATURE_MARKERS):
-            skip = True
-
-        if not skip and line.strip():
-            cleaned_lines.append(line.strip())
+        cleaned_lines.append(line)
 
     cleaned_text = "\n".join(cleaned_lines)
-    # Normalize extra whitespace
-    cleaned_text = re.sub(r'\n{2,}', '\n\n', cleaned_text)
 
-    return cleaned_text
+    # Stop at first signature marker
+    for sig in SIGNATURE_MARKERS:
+        sig_pos = cleaned_text.lower().find(sig.lower())
+        if sig_pos > 0:
+            cleaned_text = cleaned_text[:sig_pos]
+            break
+
+    return cleaned_text.strip()
