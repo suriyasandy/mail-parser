@@ -1,22 +1,36 @@
-def run_easyocr_and_extract_text(image_input):
+def run_easyocr_with_custom_ner(image_input, model_path="model-best"):
     import easyocr
     import numpy as np
     from PIL import Image
+    from io import BytesIO
+    import spacy
 
+    # Load OCR and NER
     reader = easyocr.Reader(['en'])
+    nlp = spacy.load(model_path)
 
-    # Convert to acceptable input format
+    # Step 1: OCR Input Handling
     if isinstance(image_input, str):
-        # Assume it's a file path
-        ocr_result = reader.readtext(image_input)
+        ocr_result = reader.readtext(image_input, detail=0)
     elif isinstance(image_input, bytes):
         img = Image.open(BytesIO(image_input))
-        ocr_result = reader.readtext(np.array(img))
+        ocr_result = reader.readtext(np.array(img), detail=0)
     elif isinstance(image_input, Image.Image):
-        ocr_result = reader.readtext(np.array(image_input))
+        ocr_result = reader.readtext(np.array(image_input), detail=0)
     elif isinstance(image_input, np.ndarray):
-        ocr_result = reader.readtext(image_input)
+        ocr_result = reader.readtext(image_input, detail=0)
     else:
         raise ValueError("Unsupported image input format for EasyOCR.")
 
-    return " ".join(ocr_result)
+    # Step 2: Join OCR lines to text
+    extracted_text = " ".join(ocr_result)
+
+    # Step 3: Apply Custom NER
+    doc = nlp(extracted_text)
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
+
+    # Step 4: Return both text and extracted entities
+    return {
+        "text": extracted_text,
+        "entities": entities
+    }
