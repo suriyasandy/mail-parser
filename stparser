@@ -1,0 +1,46 @@
+# extraction/msg_parser_util.py
+
+from msg_parser import MsOxMessage
+
+def parse_msg_file(msg_file):
+    """
+    Parse a .msg file and return a dict with:
+      - text_body: the plain-text body (string)
+      - html_body: the HTML body if available (string, else '')
+      - attachments: list of attachments
+    """
+    msg = MsOxMessage(msg_file)
+
+    # 1. Plain-text body
+    if hasattr(msg, 'body'):
+        text_body = msg.body
+    elif hasattr(msg, 'plain_body'):
+        text_body = msg.plain_body
+    else:
+        text_body = ''
+
+    # 2. HTML body fallback chain
+    if hasattr(msg, 'htmlBody'):
+        html_body = msg.htmlBody
+    elif hasattr(msg, 'html_body'):
+        html_body = msg.html_body
+    elif hasattr(msg, 'html'):
+        html_body = msg.html
+    else:
+        html_body = ''
+
+    # 3. Decode bytes → string if needed
+    for attr in ('text_body', 'html_body'):
+        val = locals()[attr]
+        if isinstance(val, (bytes, bytearray)):
+            try:
+                val = val.decode('utf-8', errors='ignore')
+            except:
+                val = val.decode(errors='ignore')
+        locals()[attr] = val
+
+    return {
+        'text_body': text_body,
+        'html_body': html_body,
+        'attachments': msg.attachments,
+    }
