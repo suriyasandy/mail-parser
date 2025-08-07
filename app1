@@ -1,0 +1,219 @@
+import streamlit as st
+import pandas as pd
+import json
+
+from extraction.msg_parser_util import parse_msg_file
+from extraction.cleaner import clean_text
+from extraction.attribute_extractor import (
+    extract_attributes_from_text,
+    track_value_history,
+    detect_language
+)
+from extraction.table_extractor import (
+    extract_tables_from_html,
+    extract_plaintext_tables
+)
+from extraction.ocr_extractor import extract_text_from_images
+from extraction.pdf_extractor import extract_text_from_pdf
+from extraction.attachment_extractor import extract_from_csv, extract_from_xlsx
+from utils.save_feedback import save_feedback
+from ner.retrain import train_model
+
+st.set_page_config(page_title="Trade Entity Extraction", layout="wide")
+
+# --- Sidebar: Role Selection ---
+st.sidebar.title("User Role")
+role = st.sidebar.selectbox("Select role", ["Analyst", "Supervisor", "Admin"])
+st.sidebar.write(f"Role: {role}")
+
+st.title("Email-based Trade Entity Extraction System")
+
+# --- Inputs ---
+uploaded_file = st.file_uploader("Upload .msg file", type=["msg"])
+demo_text = st.text_area("Or paste email text", height=200)
+
+if uploaded_file or demo_text.strip():
+    # --- Parse input .msg or demo text ---
+    if uploaded_file:
+        parsed = parse_msg_file(uploaded_file)
+        chain = parsed["chain"]
+        attachments = parsed["attachments"]
+    else:
+        chain = [{"text_body": demo_text, "html_body": ""}]
+        attachments = []
+
+    # Clean and assemble full thread text for feedback
+    cleaned_messages = [clean_text(msg["text_body"]) for msg in chain]
+    full_text = "\n".join(cleaned_messages)
+
+    all_entities = []
+    all_attr_lists = []
+
+    # --- Process each message in the thread ---
+    for idx, msg in enumerate(chain):
+        raw = msg["text_body"]
+        cleaned = clean_text(raw)
+
+        st.subheader(f"Message {idx+1}")
+        st.write(f"Language: {detect_language(cleaned)}")
+        st.code(cleaned[:300])
+
+        # 1. Inline attribute extraction
+        attrs = extract_attributes_from_text(cleaned)
+        if attrs:
+            st.write("Inline Attributes:")
+            st.json(attrs)
+        all_attr_lists.append(attrs)
+        for attr in attrs:
+            all_entities.append({
+                "attribute": attr["attribute"],
+                "value": attr["value"],
+                "source": f"text_msg_{idx+1}"
+            })
+
+        # 2. HTML tables (use raw HTML—no signature inlining here)
+        html_tables = extract_tables_from_html(msg["html_body"])
+        for t_idx, df in enumerate(html_tables):
+            st.write(f"HTML Table {t_idx+1}")
+            st.dataframe(df)
+            for _, row in df.iterrows():
+                for col, val in row.items():
+                    all_entities.append({
+                        "attribute": col,
+                        "value": val,
+                        "source": f"html_msg_{idx+1}_table_{t_idx+1}"
+                    })
+
+        # 3. Plaintext tables on cleaned text
+        ptables = extract_plaintext_tables(cleaned)
+        for t_idx, df in enumerate(ptables):
+            st.write(f"Plaintext Table {t_idx+1}")
+            st.dataframe(df)
+
+            # Prompt for headers if generic
+            if all(c.startswith("col_") for c in df.columns):
+                new_headers = st.text_input(
+                    f"Headers for Table {t_idx+1}",
+                    value=",".join(df.columns),
+                    key=f"hdr_{idx}_{t_idx}"
+                )
+                headers = [h.strip() for h in new_headers.split(",")]
+                if len(headers) == len(df.columns):
+                    df.columns = headers
+                    st.dataframe(df)
+
+            for _, row in df.iterrows():
+                for col, val in row.items():
+                    all_entities.append({
+                        "attribute": col,
+                        "value": val,
+                        "source": f"plain_msg_{idx+1}_tbl_{t_idx+1}"
+                    })
+
+    # --- OCR on image attachments ---
+    ocr_results = extract_text_from_images(attachments)
+    for res in ocr_results:
+        st.write(f"Image: {res['filename']}")
+        if "error" in res:
+            st.error(res["error"])
+        else:
+            cleaned_ocr = clean_text(res["text"])
+            st.code(cleaned_ocr[:200])
+            attrs = extract_attributes_from_text(cleaned_ocr)
+            for attr in attrs:
+                all_entities.append({
+                    "attribute": attr["attribute"],
+                    "value": attr["value"],
+                    "source": f"ocr_{res['filename']}"
+                })
+
+    # --- PDF attachments ---
+    for att in attachments:
+        fname = att['longFilename'] or att['filename']
+        if fname.lower().endswith(".pdf"):
+            st.write(f"PDF: {fname}")
+            pages = extract_text_from_pdf(att['data'])
+            for page in pages:
+                cleaned_pdf = clean_text(page.get("text","") or "")
+                st.write(f"Page {page['page']}")
+                st.code(cleaned_pdf[:200])
+                attrs = extract_attributes_from_text(cleaned_pdf)
+                for attr in attrs:
+                    all_entities.append({
+                        "attribute": attr["attribute"],
+                        "value": attr["value"],
+                        "source": f"pdf_{fname}_p{page['page']}"
+                    })
+
+    # --- CSV/XLSX attachments ---
+    for att in attachments:
+        fname = att['longFilename'] or att['filename']
+        if fname.lower().endswith(".csv"):
+            st.write(f"CSV: {fname}")
+            df = extract_from_csv(att['data'])
+            st.dataframe(df)
+            for _, row in df.iterrows():
+                for col, val in row.items():
+                    all_entities.append({
+                        "attribute": col,
+                        "value": val,
+                        "source": f"csv_{fname}"
+                    })
+        elif fname.lower().endswith((".xls", ".xlsx")):
+            st.write(f"Excel: {fname}")
+            df = extract_from_xlsx(att['data'])
+            st.dataframe(df)
+            for _, row in df.iterrows():
+                for col, val in row.items():
+                    all_entities.append({
+                        "attribute": col,
+                        "value": val,
+                        "source": f"xlsx_{fname}"
+                    })
+
+    # --- Consolidate & Review Entities ---
+    if all_entities:
+        st.header("Consolidated Entities")
+        df_ent = pd.DataFrame(all_entities)
+        df_ent["valid"] = False
+        df_ent["edited_attribute"] = df_ent["attribute"]
+        df_ent["edited_value"] = df_ent["value"]
+
+        # Review grid
+        for i, row in df_ent.iterrows():
+            cols = st.columns([2, 2, 1, 3])
+            df_ent.at[i, "edited_attribute"] = cols[0].text_input(
+                f"Attr {i}", row["attribute"], key=f"ea_{i}"
+            )
+            df_ent.at[i, "edited_value"] = cols[1].text_input(
+                f"Val {i}", row["value"], key=f"ev_{i}"
+            )
+            df_ent.at[i, "valid"] = cols[2].checkbox("Valid", key=f"v_{i}")
+            cols[3].write(row["source"])
+
+        # Actions by role
+        if role in ["Analyst", "Supervisor", "Admin"]:
+            valid_df = df_ent[df_ent["valid"]]
+            if not valid_df.empty:
+                csv_data = valid_df[["edited_attribute", "edited_value"]].to_csv(index=False)
+                st.download_button(
+                    "Download Entities CSV",
+                    data=csv_data,
+                    file_name="entities.csv"
+                )
+
+                if role in ["Supervisor", "Admin"]:
+                    if st.button("Submit Feedback"):
+                        feedback_list = [
+                            {"label": r["edited_attribute"], "text": r["edited_value"]}
+                            for _, r in valid_df.iterrows()
+                        ]
+                        save_feedback(full_text, feedback_list)
+                        st.success("Feedback saved.")
+
+        if role == "Admin":
+            if st.button("Retrain Model"):
+                train_model()
+                st.success("Model retrained.")
+    else:
+        st.info("No entities found.")
