@@ -79,3 +79,17 @@ def run_easyocr_with_custom_ner(
         "entities": entities,
         "structured_table": structured_table
     }
+
+
+
+result = run_easyocr_with_custom_ner("path/to/table_image.png")
+
+print("📄 Full OCR Text:\n", result["text"])
+print("\n🔍 Detected Entities:")
+for ent, label in result["entities"]:
+    print(f"{ent} → {label}")
+
+print("\n📊 Table Rows:")
+for row in result["structured_table"]:
+    print(row)
+
