@@ -3,37 +3,37 @@
 import os
 import nltk
 
-# === 1) Ensure NLTK uses your local data first (for stopwords, etc.) ===
+# 1) Point NLTK at your local nltk_data folder
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(HERE)
 LOCAL_NLTK = os.path.join(PROJECT_ROOT, "nltk_data")
 nltk.data.path.insert(0, LOCAL_NLTK)
 
-# === 2) Monkey-patch word_tokenize to avoid any punkt downloads ===
+# 2) Import your offline sentence splitter
+from nlp.sentence_splitter import split_into_sentences
+
+# 3) Monkey-patch NLTK tokenizers
 from nltk.tokenize import WordPunctTokenizer
 nltk.tokenize.word_tokenize = WordPunctTokenizer().tokenize
+nltk.tokenize.sent_tokenize = split_into_sentences
 
-# === 3) Load your local stopwords file manually ===
-stopwords_file = os.path.join(
-    LOCAL_NLTK, "corpora", "stopwords", "english"
-)
+# 4) Load stopwords from your local copy
+stopwords_file = os.path.join(LOCAL_NLTK, "corpora", "stopwords", "english")
 with open(stopwords_file, encoding="utf-8") as f:
     local_stopwords = {w.strip().lower() for w in f if w.strip()}
 
-# === 4) Instantiate RAKE with your local stopwords ===
+# 5) Configure RAKE to use those stopwords
 from rake_nltk import Rake
 _rake = Rake(
     stopwords=local_stopwords,
-    # You can also pass in a punctuation set if you like:
-    # punctuations = string.punctuation,
     min_length=1,
     max_length=3
 )
 
 def extract_keywords(text: str, top_n: int = 10) -> list[str]:
     """
-    Extract top_n key phrases from text using RAKE,
-    without ever calling nltk.download or using online punkt.
+    Extracts the top_n key phrases from text using RAKE,
+    without ever calling nltk.download or loading punkt.
     """
     _rake.extract_keywords_from_text(text)
     return _rake.get_ranked_phrases()[:top_n]
