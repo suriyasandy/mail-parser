@@ -1,0 +1,31 @@
+[paths]
+train = null
+dev = null
+
+[system]
+gpu_allocator = "pytorch"
+
+[nlp]
+lang = "en"
+pipeline = ["ner"]
+
+[components]
+
+[components.ner]
+factory = "ner"
+
+[training]
+optimizer = {
+    "@optimizers": "Adam.v1",
+    "learn_rate": 0.001,
+}
+batcher = {
+    "@batchers": "spacy.batch_by_words.v1",
+    "size": 2000,
+    "discard_oversize": true,
+}
+max_steps = 500
+dropout = 0.35
+
+[initialize]
+vectors = null
