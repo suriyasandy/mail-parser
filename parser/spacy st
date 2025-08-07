@@ -1,0 +1,11 @@
+import streamlit as st
+import spacy
+from spacy import displacy
+
+nlp = spacy.load("model-best")  # or path to your custom model
+
+text = st.text_area("Enter text", height=300)
+if st.button("Analyze"):
+    doc = nlp(text)
+    html = displacy.render(doc, style="ent")
+    st.markdown(html, unsafe_allow_html=True)
