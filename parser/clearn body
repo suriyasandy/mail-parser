@@ -1,54 +1,45 @@
-import re
 from bs4 import BeautifulSoup
+import re
 
-SIGNATURE_MARKERS = [
-    "regards", "thanks", "thank you", "sincerely", "best regards", "yours truly"
-]
-
-HEADER_LINE_REGEX = re.compile(
-    r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE
-)
-
-REPLY_SPLITTERS = [
-    "-----Original Message-----",
-    "From:",  # used repeatedly in reply chains
-    "<div class=\"moz-cite-prefix\">"  # Thunderbird
-]
-
-def clean_html_email(html: str) -> str:
+def clean_html_keep_structure(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
 
-    # Step 1: Get all text content
-    full_text = soup.get_text(separator="\n")
+    # --- Remove metadata and styling tags ---
+    for tag in soup(["style", "script", "head", "title", "meta", "link"]):
+        tag.decompose()
 
-    # Step 2: Keep only the top section before reply chain
-    for marker in REPLY_SPLITTERS:
-        if marker in full_text:
-            full_text = full_text.split(marker)[0]
-            break
+    # --- Remove reply chain: blockquotes, horizontal lines, original messages ---
+    for block in soup.find_all("blockquote"):
+        block.decompose()
 
-    # Step 3: Line-by-line cleaning
-    cleaned_lines = []
-    skip_signature = False
+    for hr in soup.find_all("hr"):
+        hr.decompose()
 
-    for line in full_text.splitlines():
-        line_strip = line.strip()
+    for div in soup.find_all("div"):
+        if "original message" in div.get_text(strip=True).lower():
+            div.decompose()
 
-        if not line_strip:
-            continue
+    # --- Remove repeated headers like From:, To:, etc. ---
+    HEADER_REGEX = re.compile(r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE)
+    for p in soup.find_all(["p", "div", "span", "td"]):
+        text = p.get_text(strip=True)
+        if HEADER_REGEX.match(text):
+            p.decompose()
 
-        # Remove header lines
-        if HEADER_LINE_REGEX.match(line_strip):
-            continue
+    # --- Remove signatures heuristically ---
+    SIGNATURE_KEYWORDS = [
+        "regards", "thanks", "thank you", "sincerely", "best regards", "yours truly"
+    ]
 
-        # Skip rest after signature marker
-        if not skip_signature and any(sig in line_strip.lower() for sig in SIGNATURE_MARKERS):
-            skip_signature = True
+    for tag in soup.find_all(["p", "div", "span"]):
+        text = tag.get_text().strip().lower()
+        if any(sig in text for sig in SIGNATURE_KEYWORDS):
+            tag.decompose()
 
-        if not skip_signature:
-            cleaned_lines.append(line_strip)
+    # Optional: remove empty elements
+    for tag in soup.find_all():
+        if not tag.get_text(strip=True):
+            tag.decompose()
 
-    cleaned_text = "\n".join(cleaned_lines)
-    cleaned_text = re.sub(r"\n{2,}", "\n\n", cleaned_text)
-
-    return cleaned_text.strip()
+    # --- Return cleaned HTML ---
+    return str(soup)
