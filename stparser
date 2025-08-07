@@ -3,56 +3,51 @@ import re
 import io
 from bs4 import BeautifulSoup
 import pandas as pd
-from PIL import Image
 import easyocr
-from parsers.table_extractor import extract_plaintext_tables  # your existing function
+from parsers.table_extractor import extract_plaintext_tables
 
 # instantiate the OCR reader once
 reader = easyocr.Reader(['en'], gpu=False)
 
 def parse_msg_file_categorized(file_path: str) -> dict:
-    """
-    Parses a .msg file and returns:
-      - subject
-      - text_body
-      - html_body
-      - inline_images (list of {filename, data})
-      - image_attachments (list of {filename, data})
-      - ocr_results (list of {filename, text or error})
-      - html_tables (list of DataFrames)
-      - plaintext_tables (list of DataFrames)
-    """
     msg = extract_msg.Message(file_path)
     msg.encoding = 'utf-8'
 
-    subject   = msg.subject or ""
-    text_body = msg.body    or ""
-    html_body = msg.htmlBody or msg.html_body or ""
+    # 1. raw bodies
+    raw_text = msg.body or msg.plain_body or ""
+    raw_html = msg.htmlBody or msg.html_body or msg.html or ""
 
-    # separate inline vs attachment images
+    # 2. decode bytes → str if needed
+    def ensure_str(x):
+        if isinstance(x, (bytes, bytearray)):
+            return x.decode('utf-8', errors='ignore')
+        return x
+
+    text_body = ensure_str(raw_text)
+    html_body = ensure_str(raw_html)
+
+    # 3. split inline vs attachments images, OCR, tables etc...
     inline_images    = []
     image_attachments = []
     for att in msg.attachments or []:
         name = att.longFilename or att.shortFilename or ""
         data = att.data
-        ext  = name.lower().split('.')[-1]
+        ext  = name.lower().rsplit(".",1)[-1]
         if ext in ("png","jpg","jpeg","bmp","tiff"):
-            # treat as inline if referenced by CID in html
             cid_ref = f"cid:{name}"
-            if hasattr(att, "content_id") or cid_ref in html_body:
+            if getattr(att, "content_id", None) or cid_ref in html_body:
                 inline_images.append({"filename": name, "data": data})
             else:
                 image_attachments.append({"filename": name, "data": data})
 
-    # run OCR on all attachment images
+    # 4. OCR on attachment images
     ocr_results = []
     for img in image_attachments:
         try:
-            # you can also do Image.open(io.BytesIO(img["data"])) if needed
-            texts = reader.readtext(img["data"], detail=0)
+            txt = reader.readtext(img["data"], detail=0)
             ocr_results.append({
                 "filename": img["filename"],
-                "text": "\n".join(texts)
+                "text": "\n".join(txt)
             })
         except Exception as e:
             ocr_results.append({
@@ -60,21 +55,20 @@ def parse_msg_file_categorized(file_path: str) -> dict:
                 "error": str(e)
             })
 
-    # extract HTML tables
+    # 5. HTML tables
     soup = BeautifulSoup(html_body, "html.parser")
     html_tables = []
-    for table in soup.find_all("table"):
+    for tbl in soup.find_all("table"):
         try:
-            df = pd.read_html(str(table))[0]
+            df = pd.read_html(str(tbl))[0]
             html_tables.append(df)
-        except Exception:
-            continue
+        except:
+            pass
 
-    # extract plaintext tables
+    # 6. Plaintext tables
     plaintext_tables = extract_plaintext_tables(text_body)
 
     return {
-        "subject": subject,
         "text_body": text_body,
         "html_body": html_body,
         "inline_images": inline_images,
