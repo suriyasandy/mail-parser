@@ -9,3 +9,21 @@ if st.button("Analyze"):
     doc = nlp(text)
     html = displacy.render(doc, style="ent")
     st.markdown(html, unsafe_allow_html=True)
+
+
+
+
+import spacy
+import spacy_streamlit
+
+# Load your custom trained NER model
+nlp = spacy.load("model-best")  # or use full path
+
+# Define example texts
+examples = [
+    "Trade TRD12345 had a PnL of 1.2M USD with CVA of 0.5M USD on 2025-08-06.",
+    "The legal entity HBSG executed a notional range of 10M-20M."
+]
+
+# Launch visualization
+spacy_streamlit.visualize(models=["model-best"], visualizers=["ner"], texts=examples)
