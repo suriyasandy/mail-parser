@@ -1,43 +1,61 @@
+# extraction/cleaner.py
+
 from bs4 import BeautifulSoup
 import re
 
-def clean_signatures_keep_mail_chain(html: str) -> str:
+def clean_outlook_signatures_keep_chain(html: str) -> str:
+    """
+    Given Outlook‐style HTML from a .msg mail chain, remove every signature block
+    (marked by _MailAutoSig) but keep the full chain of replies intact.
+    """
     soup = BeautifulSoup(html, "html.parser")
 
-    # Remove <style>, <script>, <head>, etc.
+    # 1) Remove non-content tags
     for tag in soup(["style", "script", "head", "meta", "title", "link", "xml"]):
         tag.decompose()
 
-    # ✅ Remove ALL signature blocks based on _MailAutoSig in:
-    # <a name>, class, style
+    # 2) Identify ALL tags that mark the start of a signature
+    sig_tags = []
     for tag in soup.find_all():
-        name_attr = tag.get("name", "")
-        class_attr = " ".join(tag.get("class", [])) if tag.has_attr("class") else ""
-        style_attr = tag.get("style", "")
+        name_attr  = tag.attrs.get("name", "")
+        # .get("class", []) may be list or None
+        cls_list   = tag.attrs.get("class") or []
+        class_attr = " ".join(cls_list)
+        style_attr = tag.attrs.get("style", "")
 
         if (
             "_MailAutoSig" in name_attr
             or "_MailAutoSig" in class_attr
             or "mso-bookmark:_MailAutoSig" in style_attr
         ):
-            container = tag.find_parent(["div", "p", "span", "td"]) or tag
-            container.decompose()
+            sig_tags.append(tag)
 
-    # ✅ Remove MS Word styling (optional)
+    # 3) For each signature marker, remove its parent container AND everything that follows
+    for sig in sig_tags:
+        # find the enclosing block (p, div, span, td)
+        container = sig.find_parent(["p", "div", "span", "td"]) or sig
+        # remove container + everything after it
+        for el in list(container.find_all_next()):
+            el.decompose()
+        container.decompose()
+
+    # 4) Clean up any remaining MS-Office formatting if you like
+    #    (optional—this only strips out Mso* classes & mso-* styles)
     for tag in soup.find_all(attrs={"class": re.compile(r"^Mso")}):
         tag.attrs.pop("class", None)
-
     for tag in soup.find_all():
-        if "mso-" in tag.get("style", ""):
+        style = tag.attrs.get("style", "")
+        if "mso-" in style:
             tag.attrs.pop("style", None)
 
-    # ✅ Remove From:/To:/Sent: headers inside content
-    header_regex = re.compile(r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE)
+    # 5) Remove inline “From:…”, “Sent:…”, etc., from each reply
+    header_re = re.compile(r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE)
     for tag in soup.find_all(["p", "div", "span", "td"]):
-        if header_regex.match(tag.get_text(strip=True)):
+        text = tag.get_text(strip=True)
+        if header_re.match(text):
             tag.decompose()
 
-    # ✅ Remove empty tags
+    # 6) Drop any now-empty tags
     for tag in soup.find_all():
         if not tag.get_text(strip=True):
             tag.decompose()
