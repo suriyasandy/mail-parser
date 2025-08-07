@@ -1,7 +1,6 @@
 # extraction/msg_parser_util.py
 
 import extract_msg
-import re
 import io
 import base64
 from bs4 import BeautifulSoup
@@ -9,90 +8,72 @@ import pandas as pd
 import easyocr
 from parsers.table_extractor import extract_plaintext_tables
 
-reader = easyocr.Reader(['en'], gpu=False)
+# one‐time init of the OCR reader
+reader = easyocr.Reader(["en"], gpu=False)
 
 def parse_msg_file_categorized(file_path: str) -> dict:
     msg = extract_msg.Message(file_path)
-    msg.encoding = 'utf-8'
+    msg.encoding = "utf-8"
 
-    # 1) Get raw bodies (decode bytes if needed)
+    # 1) get raw text/html (decode bytes if needed)
     def ensure_str(x):
         if isinstance(x, (bytes, bytearray)):
-            return x.decode('utf-8', errors='ignore')
+            return x.decode("utf-8", errors="ignore")
         return x
 
-    raw_text = getattr(msg, 'body', '') or getattr(msg, 'plain_body', '') or ''
-    raw_html = getattr(msg, 'htmlBody', '') or getattr(msg, 'html_body', '') or getattr(msg, 'html', '') or ''
+    raw_text = getattr(msg, "body", "") or getattr(msg, "plain_body", "") or ""
+    raw_html = getattr(msg, "htmlBody", "") or getattr(msg, "html_body", "") or getattr(msg, "html", "") or ""
     text_body = ensure_str(raw_text)
     html_body = ensure_str(raw_html)
 
-    # 2) Parse HTML to find images (data URIs) and tables
-    soup = BeautifulSoup(html_body, 'html.parser')
+    # 2) extract all image attachments (by extension), ignoring inline-vs-attachment logic
+    image_exts = {"png", "jpg", "jpeg", "bmp", "tiff", "gif"}
+    image_attachments = []
+    for att in msg.attachments or []:
+        name = att.longFilename or att.shortFilename or ""
+        data = att.data
+        ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+        if ext in image_exts:
+            image_attachments.append({"filename": name, "data": data})
 
-    # 2a) Inline base64 images in the HTML
-    base64_images = []
-    for idx, img in enumerate(soup.find_all('img')):
-        src = img.get('src', '')
-        if src.startswith('data:image'):
-            # split off the header
-            header, b64 = src.split(',', 1)
+    # 3) also pull out any base64 data‐URI images embedded in the HTML
+    soup = BeautifulSoup(html_body, "html.parser")
+    for idx, img in enumerate(soup.find_all("img")):
+        src = img.get("src", "")
+        if src.startswith("data:image"):
+            header, b64 = src.split(",", 1)
             try:
-                img_bytes = base64.b64decode(b64)
-                ext = header.split(';')[0].split('/')[1]  # e.g. 'png'
-                filename = f'inline_{idx}.{ext}'
-                base64_images.append({'filename': filename, 'data': img_bytes})
+                data = base64.b64decode(b64)
+                ext = header.split(";")[0].split("/")[1]  # e.g. "png"
+                image_attachments.append({"filename": f"inline_{idx}.{ext}", "data": data})
             except Exception:
                 pass
 
-    # 2b) Any image attachments from extract-msg
-    inline_images = []
-    image_attachments = []
-    for att in msg.attachments or []:
-        name = att.longFilename or att.shortFilename or ''
-        data = att.data
-        ext  = name.lower().rsplit('.',1)[-1]
-        if ext in ('png','jpg','jpeg','bmp','tiff'):
-            cid_ref = f'cid:{name}'
-            if getattr(att, 'content_id', None) or cid_ref in html_body:
-                inline_images.append({'filename': name, 'data': data})
-            else:
-                image_attachments.append({'filename': name, 'data': data})
-
-    # merge pasted‐into‐body images into attachments for OCR
-    image_attachments.extend(base64_images)
-
-    # 3) OCR all image attachments
+    # 4) run OCR on **all** collected images
     ocr_results = []
     for img in image_attachments:
         try:
-            texts = reader.readtext(img['data'], detail=0)
-            ocr_results.append({
-                'filename': img['filename'],
-                'text': '\n'.join(texts)
-            })
+            lines = reader.readtext(img["data"], detail=0)
+            ocr_results.append({"filename": img["filename"], "text": "\n".join(lines)})
         except Exception as e:
-            ocr_results.append({
-                'filename': img['filename'],
-                'error': str(e)
-            })
+            ocr_results.append({"filename": img["filename"], "error": str(e)})
 
-    # 4) HTML tables
+    # 5) extract HTML tables
     html_tables = []
-    for tbl in soup.find_all('table'):
+    for tbl in soup.find_all("table"):
         try:
             html_tables.append(pd.read_html(str(tbl))[0])
-        except:
+        except Exception:
             pass
 
-    # 5) Plain-text tables
+    # 6) extract plaintext tables
     plaintext_tables = extract_plaintext_tables(text_body)
 
     return {
-        'text_body': text_body,
-        'html_body': html_body,
-        'inline_images': inline_images,
-        'image_attachments': image_attachments,
-        'ocr_results': ocr_results,
-        'html_tables': html_tables,
-        'plaintext_tables': plaintext_tables,
+        "text_body": text_body,
+        "html_body": html_body,
+        "image_attachments": image_attachments,
+        "ocr_results": ocr_results,
+        "html_tables": html_tables,
+        "plaintext_tables": plaintext_tables,
     }
