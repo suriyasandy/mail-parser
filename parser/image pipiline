@@ -1,0 +1,17 @@
+from PIL import Image
+import easyocr
+import spacy
+
+# Load model and OCR
+nlp = spacy.load("model-best")
+reader = easyocr.Reader(['en'])
+
+# Read text from image
+image = Image.open("table_screenshot.png")
+ocr_result = reader.readtext(image, detail=0)
+ocr_text = " ".join(ocr_result)
+
+# Apply NER
+doc = nlp(ocr_text)
+for ent in doc.ents:
+    print(ent.text, ent.label_)
