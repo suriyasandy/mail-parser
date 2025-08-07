@@ -1,9 +1,10 @@
 [paths]
-train = null
-dev = null
+train = "data/train.spacy"
+dev = "data/train.spacy"
 
 [system]
 gpu_allocator = "pytorch"
+seed = 42
 
 [nlp]
 lang = "en"
@@ -15,17 +16,6 @@ pipeline = ["ner"]
 factory = "ner"
 
 [training]
-optimizer = {
-    "@optimizers": "Adam.v1",
-    "learn_rate": 0.001,
-}
-batcher = {
-    "@batchers": "spacy.batch_by_words.v1",
-    "size": 2000,
-    "discard_oversize": true,
-}
-max_steps = 500
-dropout = 0.35
-
-[initialize]
-vectors = null
+dev_corpus = "corpora.dev"
+train_corpus = "corpora.train"
+max_steps = 200
