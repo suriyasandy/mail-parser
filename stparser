@@ -4,43 +4,35 @@ from msg_parser import MsOxMessage
 
 def parse_msg_file(msg_file):
     """
-    Parse a .msg file and return a dict with:
-      - text_body: the plain-text body (string)
-      - html_body: the HTML body if available (string, else '')
+    Parse a .msg file and return:
+      - chain: list of {text_body, html_body} in thread order
       - attachments: list of attachments
     """
     msg = MsOxMessage(msg_file)
 
-    # 1. Plain-text body
-    if hasattr(msg, 'body'):
-        text_body = msg.body
-    elif hasattr(msg, 'plain_body'):
-        text_body = msg.plain_body
-    else:
-        text_body = ''
+    # 1. Extract raw bodies
+    body = getattr(msg, "body", "") or getattr(msg, "plain_body", "") or ""
+    html  = getattr(msg, "htmlBody", "") or getattr(msg, "html_body", "") or getattr(msg, "html", "") or ""
 
-    # 2. HTML body fallback chain
-    if hasattr(msg, 'htmlBody'):
-        html_body = msg.htmlBody
-    elif hasattr(msg, 'html_body'):
-        html_body = msg.html_body
-    elif hasattr(msg, 'html'):
-        html_body = msg.html
-    else:
-        html_body = ''
+    # 2. Split into a simple “thread” by common delimiters
+    text_parts = body.split("\nFrom:")
+    html_parts = html.split("<br>From:") if html else [""] * len(text_parts)
 
-    # 3. Decode bytes → string if needed
-    for attr in ('text_body', 'html_body'):
-        val = locals()[attr]
-        if isinstance(val, (bytes, bytearray)):
-            try:
-                val = val.decode('utf-8', errors='ignore')
-            except:
-                val = val.decode(errors='ignore')
-        locals()[attr] = val
+    chain = []
+    for i, txt in enumerate(text_parts):
+        chain.append({
+            "text_body": txt.strip(),
+            "html_body": (html_parts[i] if i < len(html_parts) else "").strip()
+        })
+
+    # 3. Decode bytes if needed (safety)
+    for msg_obj in chain:
+        for k in ("text_body", "html_body"):
+            v = msg_obj[k]
+            if isinstance(v, (bytes, bytearray)):
+                msg_obj[k] = v.decode("utf-8", errors="ignore")
 
     return {
-        'text_body': text_body,
-        'html_body': html_body,
-        'attachments': msg.attachments,
+        "chain": chain,
+        "attachments": msg.attachments or []
     }
