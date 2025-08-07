@@ -4,35 +4,30 @@ import re
 def clean_outlook_html(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1. Remove Outlook metadata
+    # 1. Remove metadata & non-content tags
     for tag in soup(["style", "script", "head", "meta", "title", "link", "xml"]):
         tag.decompose()
 
-    # 2. Remove all blocks starting from MailAutoSig anchor
-    mail_auto_sig = soup.find(lambda tag: tag.name == "a" and "_MailAutoSig" in tag.get("name", ""))
-    if mail_auto_sig:
-        # Remove parent <p> or enclosing tag
-        enclosing = mail_auto_sig.find_parent(["div", "p", "span"])
-        if enclosing:
-            enclosing.decompose()
-        else:
-            mail_auto_sig.decompose()
+    # 2. Locate the MailAutoSig anchor and remove its parent + siblings after
+    sig_anchor = soup.find(lambda tag: tag.name == "a" and "_MailAutoSig" in tag.get("name", ""))
+    if sig_anchor:
+        container = sig_anchor.find_parent(["div", "p", "span"])
+        if container:
+            # Remove all siblings after the container (signature onwards)
+            for sibling in list(container.find_all_next()):
+                sibling.decompose()
+            container.decompose()
 
-    # 3. Remove elements referencing MailAutoSig in styles
-    for tag in soup.find_all(style=True):
-        if "MailAutoSig" in tag["style"]:
-            tag.decompose()
+    # 3. Remove blocks that contain _MailOriginal (reply chain starts here)
+    reply_anchor = soup.find(lambda tag: tag.name == "a" and "_MailOriginal" in tag.get("name", ""))
+    if reply_anchor:
+        reply_container = reply_anchor.find_parent(["div", "p", "span"])
+        if reply_container:
+            for sibling in list(reply_container.find_all_next()):
+                sibling.decompose()
+            reply_container.decompose()
 
-    # 4. Remove blocks that contain _MailOriginal (reply chain starts here)
-    mail_original = soup.find(lambda tag: tag.name == "a" and "_MailOriginal" in tag.get("name", ""))
-    if mail_original:
-        enclosing = mail_original.find_parent(["div", "p", "span"])
-        if enclosing:
-            enclosing.decompose()
-        else:
-            mail_original.decompose()
-
-    # 5. Remove MS Word styling
+    # 4. Strip mso-style and Mso* class formatting (optional)
     for tag in soup.find_all(attrs={"class": re.compile(r"^Mso")}):
         tag.attrs.pop("class", None)
 
@@ -40,13 +35,13 @@ def clean_outlook_html(html: str) -> str:
         if "mso-" in tag.get("style", ""):
             tag.attrs.pop("style", None)
 
-    # 6. Remove email headers like From:, To:, etc.
+    # 5. Remove headers (From, To, Sent, etc.)
     header_regex = re.compile(r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE)
     for tag in soup.find_all(["p", "div", "span"]):
         if header_regex.match(tag.get_text(strip=True)):
             tag.decompose()
 
-    # 7. Remove empty tags
+    # 6. Remove empty tags
     for tag in soup.find_all():
         if not tag.get_text(strip=True):
             tag.decompose()
