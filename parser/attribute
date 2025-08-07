@@ -1,37 +1,43 @@
 ATTRIBUTE_PATTERNS = {
-    "TRADE_ID": r"\b[0-9]{4,6}[A-Z]?\b",
+    "TRADE_ID": r"\b(?:Trade\s*ID[:\s]*)?[\d]{4,10}[A-Z]?\b",
     
-    "CURRENCY": r"\b(?:USD|EUR|GBP|JPY|AUD|CAD|CHF|INR|CNY|HKD|NZD|SGD)\b",
+    "CURRENCY": r"\b(?:USD|EUR|GBP|JPY|AUD|CAD|CHF|INR|CNY|HKD|NZD|SGD|ZAR|BRL|KRW|SEK|NOK|MXN|TRY|TWD)\b",
+
+    "PNL": r"(?:PnL|Profit\s*(?:and)?\s*Loss)[:\s\-]*[+-]?[0-9.,]+[MK]?\s?(?:USD|EUR|GBP)?",
     
-    "PNL": r"PnL[:\s\-]*[+-]?[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    "CVA": r"CVA[:\s\-]*[0-9.,]+[MK]?\s?(?:USD|EUR|GBP)?",
     
-    "CVA": r"CVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    "FVA": r"FVA[:\s\-]*[0-9.,]+[MK]?\s?(?:USD|EUR|GBP)?",
     
-    "FVA": r"FVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
+    "DVA": r"DVA[:\s\-]*[0-9.,]+[MK]?\s?(?:USD|EUR|GBP)?",
     
-    "DVA": r"DVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
-    
-    "VA": r"\bVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
-    
-    "RCVA": r"RCVA[:\s\-]*[0-9.,]+[KM]?\s?(?:USD|EUR|GBP)?",
-    
+    "VA": r"\bVA[:\s\-]*[0-9.,]+[MK]?\s?(?:USD|EUR|GBP)?",
+
+    "RCVA": r"RCVA[:\s\-]*[0-9.,]+[MK]?\s?(?:USD|EUR|GBP)?",
+
     "RORWA": r"RoRWA[:\s\-]*[0-9.,]+%",
+
+    "NOTIONAL": r"(?:Notional(?:\s+Value)?\s*[:\-]?\s*)?(?:[\£\$\€])?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s?(?:USD|EUR|GBP)?",
     
-    "NOTIONAL": r"(?:Notional(?: Value)?\s*[:\-]?\s*)?(?:[\£\$\€])?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s?(?:USD|EUR|GBP)?",
+    "VOLUME": r"(?:Volume[:\s\-]*)?[0-9]{1,3}(?:,\d{3})+(?:\.\d{2})?",
     
-    "TRADE_DATE": r"Trade Date[:\s\-]*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",
+    "PRICE": r"(?:Price|Rate|FX Rate)[:\s\-]*[0-9.]{1,6}",
+
+    "TRADE_DATE": r"(?:Trade Date|Booked Date)[:\s\-]*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",
     
-    "COB_DATE": r"(?:COB|As of)[:\s\-]*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",
-    
+    "COB_DATE": r"(?:COB|Valuation|As of)[:\s\-]*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",
+
     "BOOK": r"Book(?: Name)?[:\s\-]*[A-Z0-9_/-]+",
     
-    "COUNTERPARTY": r"Counterparty[:\s\-]*[A-Za-z0-9\s&.,-]+",
-    
-    "PORTFOLIO": r"Portfolio[:\s\-]*[A-Z0-9_\-]+",
-    
+    "PORTFOLIO": r"Portfolio[:\s\-]*[A-Z0-9_/-]+",
+
+    "COUNTERPARTY": r"(?:Counterparty|Client)[:\s\-]*[A-Za-z0-9\s&.,-]+",
+
     "ISIN": r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b",
+
+    "TRADE_TYPE": r"\b(?:Buy|Sell|Long|Short|Option|Swap|Forward|FRA|Repo|Future|Spot)\b",
     
-    "TRADE_TYPE": r"\b(?:Buy|Sell|Long|Short|Option|Swap|Forward|FRA|Repo)\b",
-    
-    "VOLUME": r"Volume[:\s\-]*[0-9.,]+"
+    "TENOR": r"\b(?:1M|3M|6M|9M|1Y|2Y|5Y|10Y)\b",
+
+    "INSTRUMENT": r"\b(?:Bond|CDS|IRS|Swap|Option|Equity|Commodity|FX|Future|Index)\b"
 }
