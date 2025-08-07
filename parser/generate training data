@@ -1,7 +1,8 @@
 import pandas as pd
-from typing import List, Tuple
+import spacy
+from spacy.tokens import DocBin
 
-# Define your entity labels and corresponding columns
+# Fields to extract as NER entities
 ENTITY_FIELDS = {
     "trade_id": "TRADE_ID",
     "pnl_amount": "PNL",
@@ -13,33 +14,61 @@ ENTITY_FIELDS = {
     "settlement_date": "SETTLEMENT_DATE",
     "notional_range": "NOTIONAL",
     "base_threshold_percent": "BASE_THRESHOLD",
-    "orig_threshold_percent": "ORIG_THRESHOLD",
+    "orig_threshold_percent": "ORIG_THRESHOLD"
 }
 
-def generate_training_data(csv_path: str) -> List[Tuple[str, dict]]:
-    df = pd.read_csv(csv_path)
+def generate_training_data(df: pd.DataFrame):
     training_data = []
 
     for _, row in df.iterrows():
-        # Construct the synthetic sentence
-        sentence = (
-            f"Trade {row['trade_id']} was executed for legal entity {row['legal_entity']} "
-            f"on {row['trade_date']} and settled on {row['settlement_date']}. "
-            f"The PnL was {row['pnl_amount']} with a commission of {row['commission_amount']}. "
-            f"Deviation percent was {row['deviation_percent']}. "
-            f"Alert description: {row['alert_description']}. "
-            f"Notional range was {row['notional_range']} with base threshold {row['base_threshold_percent']} "
-            f"and original threshold {row['orig_threshold_percent']}."
-        )
+        try:
+            sentence = (
+                f"Trade {row['trade_id']} was executed for legal entity {row['legal_entity']} "
+                f"on {row['trade_date']} and settled on {row['settlement_date']}. "
+                f"The PnL was {row['pnl_amount']} with a commission of {row['commission_amount']}. "
+                f"Deviation percent was {row['deviation_percent']}. "
+                f"Alert description: {row['alert_description']}. "
+                f"Notional range was {row['notional_range']} with base threshold {row['base_threshold_percent']} "
+                f"and original threshold {row['orig_threshold_percent']}."
+            )
 
-        entities = []
-        for col, label in ENTITY_FIELDS.items():
-            value = str(row[col])
-            start = sentence.find(value)
-            if start != -1:
-                end = start + len(value)
-                entities.append((start, end, label))
+            entities = []
+            for col, label in ENTITY_FIELDS.items():
+                val = str(row[col])
+                start = sentence.find(val)
+                if start != -1:
+                    end = start + len(val)
+                    entities.append((start, end, label))
 
-        training_data.append((sentence, {"entities": entities}))
+            training_data.append((sentence, {"entities": entities}))
+
+        except Exception as e:
+            print(f"Skipping row due to error: {e}")
     
     return training_data
+
+def save_as_spacy(training_data, output_path, lang="en"):
+    nlp = spacy.blank(lang)
+    doc_bin = DocBin()
+
+    for text, annot in training_data:
+        doc = nlp.make_doc(text)
+        ents = []
+        for start, end, label in annot["entities"]:
+            span = doc.char_span(start, end, label=label)
+            if span is not None:
+                ents.append(span)
+        doc.ents = ents
+        doc_bin.add(doc)
+
+    doc_bin.to_disk(output_path)
+    print(f"Saved training data to: {output_path}")
+
+if __name__ == "__main__":
+    # Path to your input CSV file
+    input_csv = "your_data.csv"  # <-- change this
+    output_spacy_file = "training_data.spacy"
+
+    df = pd.read_csv(input_csv)
+    training_data = generate_training_data(df)
+    save_as_spacy(training_data, output_spacy_file)
