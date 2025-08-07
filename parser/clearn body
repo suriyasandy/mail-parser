@@ -1,19 +1,18 @@
 from bs4 import BeautifulSoup
 import re
 
-def clean_outlook_html(html: str) -> str:
+def clean_signatures_keep_mail_chain(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1. Remove metadata tags
+    # Remove <style>, <script>, <head>, etc.
     for tag in soup(["style", "script", "head", "meta", "title", "link", "xml"]):
         tag.decompose()
 
-    # 2. Collect all elements related to _MailAutoSig
-    sig_related_tags = []
-
+    # ✅ Remove ALL signature blocks based on _MailAutoSig in:
+    # <a name>, class, style
     for tag in soup.find_all():
         name_attr = tag.get("name", "")
-        class_attr = " ".join(tag.get("class", []))
+        class_attr = " ".join(tag.get("class", [])) if tag.has_attr("class") else ""
         style_attr = tag.get("style", "")
 
         if (
@@ -21,24 +20,10 @@ def clean_outlook_html(html: str) -> str:
             or "_MailAutoSig" in class_attr
             or "mso-bookmark:_MailAutoSig" in style_attr
         ):
-            sig_related_tags.append(tag)
+            container = tag.find_parent(["div", "p", "span", "td"]) or tag
+            container.decompose()
 
-    # 3. Remove each signature container and all elements after it
-    for sig_tag in sig_related_tags:
-        container = sig_tag.find_parent(["div", "p", "span", "td"]) or sig_tag
-        for sibling in list(container.find_all_next()):
-            sibling.decompose()
-        container.decompose()
-
-    # 4. Remove reply chains (_MailOriginal)
-    reply_anchor = soup.find(lambda tag: tag.name == "a" and "_MailOriginal" in tag.get("name", ""))
-    if reply_anchor:
-        container = reply_anchor.find_parent(["div", "p", "span", "td"]) or reply_anchor
-        for sibling in list(container.find_all_next()):
-            sibling.decompose()
-        container.decompose()
-
-    # 5. Clean Mso* classes and mso-style
+    # ✅ Remove MS Word styling (optional)
     for tag in soup.find_all(attrs={"class": re.compile(r"^Mso")}):
         tag.attrs.pop("class", None)
 
@@ -46,13 +31,13 @@ def clean_outlook_html(html: str) -> str:
         if "mso-" in tag.get("style", ""):
             tag.attrs.pop("style", None)
 
-    # 6. Remove email reply headers
+    # ✅ Remove From:/To:/Sent: headers inside content
     header_regex = re.compile(r"^\s*(From|To|Cc|Bcc|Sent|Subject|Date):", re.IGNORECASE)
     for tag in soup.find_all(["p", "div", "span", "td"]):
         if header_regex.match(tag.get_text(strip=True)):
             tag.decompose()
 
-    # 7. Remove empty tags
+    # ✅ Remove empty tags
     for tag in soup.find_all():
         if not tag.get_text(strip=True):
             tag.decompose()
