@@ -1,17 +1,22 @@
-from PIL import Image
-import easyocr
-import spacy
+def run_easyocr_and_extract_text(image_input):
+    import easyocr
+    import numpy as np
+    from PIL import Image
 
-# Load model and OCR
-nlp = spacy.load("model-best")
-reader = easyocr.Reader(['en'])
+    reader = easyocr.Reader(['en'])
 
-# Read text from image
-image = Image.open("table_screenshot.png")
-ocr_result = reader.readtext(image, detail=0)
-ocr_text = " ".join(ocr_result)
+    # Convert to acceptable input format
+    if isinstance(image_input, str):
+        # Assume it's a file path
+        ocr_result = reader.readtext(image_input)
+    elif isinstance(image_input, bytes):
+        img = Image.open(BytesIO(image_input))
+        ocr_result = reader.readtext(np.array(img))
+    elif isinstance(image_input, Image.Image):
+        ocr_result = reader.readtext(np.array(image_input))
+    elif isinstance(image_input, np.ndarray):
+        ocr_result = reader.readtext(image_input)
+    else:
+        raise ValueError("Unsupported image input format for EasyOCR.")
 
-# Apply NER
-doc = nlp(ocr_text)
-for ent in doc.ents:
-    print(ent.text, ent.label_)
+    return " ".join(ocr_result)
