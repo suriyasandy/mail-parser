@@ -1,0 +1,33 @@
+from pathlib import Path
+import spacy
+from spacy.tokens import DocBin
+import json
+
+
+def convert_json_to_spacy(json_path: str, spacy_output_path: str):
+    nlp = spacy.blank("en")
+    db = DocBin()
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        training_data = json.load(f)
+
+    for text, annotation in training_data:
+        doc = nlp.make_doc(text)
+        entities = annotation.get("entities", [])
+        spans = []
+        for start, end, label in entities:
+            span = doc.char_span(start, end, label=label)
+            if span:
+                spans.append(span)
+            else:
+                print(f"⚠️ Skipping: '{text[start:end]}' - Invalid span")
+        doc.ents = spans
+        db.add(doc)
+
+    Path(spacy_output_path).parent.mkdir(parents=True, exist_ok=True)
+    db.to_disk(spacy_output_path)
+    print(f"✅ Saved: {spacy_output_path}")
+
+
+if __name__ == "__main__":
+    convert_json_to_spacy("data/training_data.json", "data/train.spacy")
