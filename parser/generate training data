@@ -47,28 +47,36 @@ def generate_training_data(df: pd.DataFrame):
     
     return training_data
 
+import spacy
+from spacy.tokens import DocBin
+
 def save_as_spacy(training_data, output_path, lang="en"):
+    """
+    Converts the training data into spaCy binary format (.spacy), avoiding overlapping entities.
+
+    Args:
+        training_data: List of (text, {"entities": [(start, end, label), ...]})
+        output_path: Output path for the .spacy file
+        lang: Language code (default: "en")
+    """
     nlp = spacy.blank(lang)
     doc_bin = DocBin()
 
     for text, annot in training_data:
         doc = nlp.make_doc(text)
         ents = []
+        seen_tokens = set()
+
         for start, end, label in annot["entities"]:
             span = doc.char_span(start, end, label=label)
             if span is not None:
-                ents.append(span)
+                span_token_indices = set(range(span.start, span.end))
+                if not seen_tokens.intersection(span_token_indices):
+                    ents.append(span)
+                    seen_tokens.update(span_token_indices)
+
         doc.ents = ents
         doc_bin.add(doc)
 
     doc_bin.to_disk(output_path)
-    print(f"Saved training data to: {output_path}")
-
-if __name__ == "__main__":
-    # Path to your input CSV file
-    input_csv = "your_data.csv"  # <-- change this
-    output_spacy_file = "training_data.spacy"
-
-    df = pd.read_csv(input_csv)
-    training_data = generate_training_data(df)
-    save_as_spacy(training_data, output_spacy_file)
+    print(f"✅ Saved training data to: {output_path}")
