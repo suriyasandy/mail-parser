@@ -1,0 +1,4 @@
+python -m spacy train C:/Users/45261673/my-app/complete_e2e_app/financial_ner_pipeline/config.cfg ^
+  --output C:/Users/45261673/my-app/complete_e2e_app/financial_ner_pipeline/output ^
+  --paths.train C:/Users/45261673/my-app/complete_e2e_app/financial_ner_pipeline/data/train.spacy ^
+  --paths.dev C:/Users/45261673/my-app/complete_e2e_app/financial_ner_pipeline/data/train.spacy
